@@ -25,8 +25,27 @@ This project will be a CLI that allows users to create, edit, view, and delete f
 
 The main namespace for this CLI will be `cfs`. 
 
-Some example commands:
+### Some example commands
 
 - `cfs init`: Creates the entire CFS with blank files; similar to what the Cursor command `cursor_semantic_scaffolding` above does. Also creates an `init.md` file in the root of the CFS (`.cursor/init.md`)
-- `cfs instructions bugs create`: creates a new instructions doc (in `.md` format; may expand to other formats later) in the `bugs` directory. All documents will automatically be prepended with an ID that is simply an integer; each directory starts with 1, then 2, etc. So for example, a file in the `bugs` directory could be called `2-fix-daily-script-hanging`. Or `3-features-add-admin-dashboard`. 
+- `cfs instructions bugs create`: creates a new instructions doc (in `.md` format; may expand to other formats later) in the `bugs` directory. All documents will automatically be prepended with an ID that is simply an integer; each document starts with 1, then 2, etc. So for example, a file in the `bugs` directory could be called `2-fix-daily-script-hanging`. Or `3-features-add-admin-dashboard`. 
     - On new file create, user will be prompted if they want to complete the document contents using a text editor (Vim, Nano, IDE, etc) during the creation process, or if they prefer to just edit the file after creation, separate from the creation process. Similar to what GitHub CLI does when creating a new issue. 
+- `cfs instructions bugs edit 2-fix-multiple-items-appearing` or `cfs instructions bugs edit 2`: like `cfs instructions <directory> create`, except that the user is editing an existing issue. Use would edit the issue inline in the CLI when running this command. (They wouldn't need to run this command to edit the file directly in an IDE etc.)
+    - The document id, discussed above, would be sufficient along with the containing folder to identify a file without the full file name. (Same for other operations such as `delete`.) 
+- `cfs instructions refactors delete 1-make-modal-dry` or `cfs instructions refactors delete 1`: similar to `edit` but for deleting an instructions doc. User should be prompted for confirmation before deletion takes place. 
+- `cfs instructions view` - lists all files within the full CFS file tree.
+- `cfs instructions research view` - lists all files within a given CFS file.
+
+### Other components
+- Maybe a boilerplate section within `init.md` that informs the Cursor agent of the meaning of this file structure and allows the user to use shorthands with the agent similar to the commands above. For instance, with this context, a user could instruct the agent "Outline a series of steps to solve my bug with X, and document these steps in a new doc within 'progress.'" Or, "edit refactors/2 to add..." And the Cursor LLM should probably always be instructed to create WIP/steps/handoff documents in 'progress', along with guidance on which documents to create in the rest of the folders. 
+- A good README.md describing the purpose and nature of this project.
+
+## Project phases
+
+### MVP
+Basically a CRUD application for the CFS. Contains operations noted above. Instructs Cursor agents on the purpose of each folder in the CFS and what types of documents to create/edit in each. Ideally, if you tell a Cursor agent something like, "Create a plan to see if an app like this has been built before and if so, how it differs from my proposed approach," the agent would know to generate that doc in `research/`. 
+
+### Verson 2.0
+CFS app should be able to integrate with GitHub issues. This should be a two-way relationship. For instance, there should be an option to linka CFS doc with a GitHub issue. You should be able to import text from a GitHub issue into a CFS doc, and vice versa (if GitHub CLI allows this). Also, if a GitHub issue is closed, then the corresponding CFS doc should be annotated to note that it's resolved. 
+
+### Version 3.0
