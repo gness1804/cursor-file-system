@@ -35,6 +35,7 @@ The main namespace for this CLI will be `cfs`.
 - `cfs instructions refactors delete 1-make-modal-dry` or `cfs instructions refactors delete 1`: similar to `edit` but for deleting an instructions doc. User should be prompted for confirmation before deletion takes place. 
 - `cfs instructions view` - lists all files within the full CFS file tree.
 - `cfs instructions research view` - lists all files within a given CFS file.
+- There should also be a command to create a new Cursor rules doc based on the parent repo (or on a more specific concern).
 
 ### Other components
 - Maybe a boilerplate section within `init.md` that informs the Cursor agent of the meaning of this file structure and allows the user to use shorthands with the agent similar to the commands above. For instance, with this context, a user could instruct the agent "Outline a series of steps to solve my bug with X, and document these steps in a new doc within 'progress.'" Or, "edit refactors/2 to add..." And the Cursor LLM should probably always be instructed to create WIP/steps/handoff documents in 'progress', along with guidance on which documents to create in the rest of the folders. 
@@ -49,3 +50,15 @@ Basically a CRUD application for the CFS. Contains operations noted above. Instr
 CFS app should be able to integrate with GitHub issues. This should be a two-way relationship. For instance, there should be an option to linka CFS doc with a GitHub issue. You should be able to import text from a GitHub issue into a CFS doc, and vice versa (if GitHub CLI allows this). Also, if a GitHub issue is closed, then the corresponding CFS doc should be annotated to note that it's resolved. 
 
 ### Version 3.0
+CFS app should integrate with the existing Cursor Agent CLI. (https://cursor.com/blog/cli) For instance, there might be a new command `cursor-agent create-chat cfs instructions bugs/3` which would create a new Cursor agent involving the doc with ID of 3 in `<project>/.cursor/bugs`. The Cursor agent would know that this doc is part of its context; its focus would be on solving this bug unless the user told it otherwise. 
+
+### Version 4.0 and beyond
+Who knows...
+- MCP integrations
+- Integrations with other services like Gitlab, Slack, Discord, etc. (For instance, a Slack bot could alert you when a CFS doc has been finished or could allow you to create a new doc right from Slack.)
+
+### Other details
+- I would like the CLI to be in Python if possible. 
+- Follow the CFS system in assisting me to build this project. 
+- Create a series of steps to complete before implementing any of the work. 
+- Get my authorization before implementing any of the work and between each step. 
