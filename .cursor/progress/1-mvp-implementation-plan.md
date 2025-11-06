@@ -52,14 +52,14 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 - [x] Implement function to find document by ID in category - `find_document_by_id()`
 - [x] Add validation for category names - `validate_category()` and `get_category_path()`
 
-### Step 3: Document Management Module ⚠️ PARTIAL
+### Step 3: Document Management Module ✅ COMPLETE
 - [x] Create `cfs/documents.py` with document CRUD operations
 - [x] Helper functions implemented: `get_next_id()`, `parse_document_id()`, `find_document_by_id()`, `kebab_case()`
-- [ ] Implement `create_document(category, title, content)` - creates file with ID prefix
-- [ ] Implement `get_document(category, doc_id)` - finds and reads document
-- [ ] Implement `edit_document(category, doc_id, content)` - updates document
-- [ ] Implement `delete_document(category, doc_id)` - deletes document with confirmation
-- [ ] Implement `list_documents(category=None)` - lists all or category-specific docs
+- [x] Implement `create_document(category, title, content)` - creates file with ID prefix
+- [x] Implement `get_document(category, doc_id)` - finds and reads document
+- [x] Implement `edit_document(category, doc_id, content)` - updates document
+- [x] Implement `delete_document(category, doc_id)` - deletes document
+- [x] Implement `list_documents(category=None)` - lists all or category-specific docs
 
 ### Step 4: Editor Integration Module ✅ COMPLETE
 - [x] Create `cfs/editor.py` for text editor integration
@@ -68,13 +68,13 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 - [x] Implement function to capture editor output
 - [x] Handle both interactive and non-interactive modes
 
-### Step 5: CLI Commands - Base Structure ⚠️ PARTIAL
+### Step 5: CLI Commands - Base Structure ✅ COMPLETE
 - [x] Create `cfs/cli.py` with Typer app setup
 - [x] Set up main `cfs` command group
 - [x] Basic version command implemented
-- [ ] Set up `instructions` subcommand group
-- [ ] Set up `rules` subcommand group
-- [ ] Add global options (verbose, config path, etc.)
+- [x] Set up `instructions` subcommand group
+- [x] Set up `rules` subcommand group
+- [x] Add global options (verbose flag)
 
 ### Step 6: CLI Commands - Init
 - [ ] Implement `cfs init` command
