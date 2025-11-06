@@ -35,40 +35,43 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 
 ## Implementation Steps
 
-### Step 1: Project Setup & Structure
-- [ ] Initialize Python project with pyproject.toml
-- [ ] Set up project directory structure
-- [ ] Configure dependencies (typer, rich for CLI output, etc.)
-- [ ] Create basic package structure (`cfs/` directory)
-- [ ] Set up entry point for `cfs` command
-- [ ] Create README.md with installation and usage instructions
+### Step 1: Project Setup & Structure ✅ COMPLETE
+- [x] Initialize Python project with pyproject.toml
+- [x] Set up project directory structure
+- [x] Configure dependencies (typer, rich for CLI output, etc.)
+- [x] Create basic package structure (`cfs/` directory)
+- [x] Set up entry point for `cfs` command
+- [x] Create README.md with installation and usage instructions
+- [x] Add .gitignore for Python development artifacts
 
-### Step 2: Core CFS Operations Module
-- [ ] Create `cfs/core.py` with CFS path detection logic
-- [ ] Implement function to find `.cursor` directory (walk up from current dir)
-- [ ] Implement function to get next available ID for a category
-- [ ] Implement function to parse document ID from filename
-- [ ] Implement function to find document by ID in category
-- [ ] Add validation for category names
+### Step 2: Core CFS Operations Module ✅ COMPLETE
+- [x] Create `cfs/core.py` with CFS path detection logic
+- [x] Implement function to find `.cursor` directory (walk up from current dir) - `find_cfs_root()`
+- [x] Implement function to get next available ID for a category - `get_next_id()` (in documents.py)
+- [x] Implement function to parse document ID from filename - `parse_document_id()`
+- [x] Implement function to find document by ID in category - `find_document_by_id()`
+- [x] Add validation for category names - `validate_category()` and `get_category_path()`
 
-### Step 3: Document Management Module
-- [ ] Create `cfs/documents.py` with document CRUD operations
+### Step 3: Document Management Module ⚠️ PARTIAL
+- [x] Create `cfs/documents.py` with document CRUD operations
+- [x] Helper functions implemented: `get_next_id()`, `parse_document_id()`, `find_document_by_id()`, `kebab_case()`
 - [ ] Implement `create_document(category, title, content)` - creates file with ID prefix
 - [ ] Implement `get_document(category, doc_id)` - finds and reads document
 - [ ] Implement `edit_document(category, doc_id, content)` - updates document
 - [ ] Implement `delete_document(category, doc_id)` - deletes document with confirmation
 - [ ] Implement `list_documents(category=None)` - lists all or category-specific docs
 
-### Step 4: Editor Integration Module
-- [ ] Create `cfs/editor.py` for text editor integration
-- [ ] Implement function to detect available editors (check $EDITOR, then common editors)
-- [ ] Implement function to launch editor with temporary file
-- [ ] Implement function to capture editor output
-- [ ] Handle both interactive and non-interactive modes
+### Step 4: Editor Integration Module ✅ COMPLETE
+- [x] Create `cfs/editor.py` for text editor integration
+- [x] Implement function to detect available editors (check $EDITOR, then common editors) - `detect_editor()`
+- [x] Implement function to launch editor with temporary file - `edit_content()`
+- [x] Implement function to capture editor output
+- [x] Handle both interactive and non-interactive modes
 
-### Step 5: CLI Commands - Base Structure
-- [ ] Create `cfs/cli.py` with Typer app setup
-- [ ] Set up main `cfs` command group
+### Step 5: CLI Commands - Base Structure ⚠️ PARTIAL
+- [x] Create `cfs/cli.py` with Typer app setup
+- [x] Set up main `cfs` command group
+- [x] Basic version command implemented
 - [ ] Set up `instructions` subcommand group
 - [ ] Set up `rules` subcommand group
 - [ ] Add global options (verbose, config path, etc.)

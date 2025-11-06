@@ -20,6 +20,7 @@ def main_callback(ctx: typer.Context):
 def version():
     """Show the version number."""
     from cfs import __version__
+
     typer.echo(f"cfs version {__version__}")
 
 
@@ -30,4 +31,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
