@@ -93,30 +93,30 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 - [ ] Create document file with ID-title format
 - [ ] Show success message with file path
 
-### Step 8: CLI Commands - Edit
-- [ ] Implement `cfs instructions <category> edit <id>` command
-- [ ] Parse ID (handle both numeric ID and full filename)
-- [ ] Find document by ID
-- [ ] Load current content
-- [ ] Launch editor with current content
-- [ ] Save updated content
-- [ ] Show success message
+### Step 8: CLI Commands - Edit ✅ COMPLETE
+- [x] Implement `cfs instructions <category> edit <id>` command
+- [x] Parse ID (handle both numeric ID and full filename)
+- [x] Find document by ID
+- [x] Load current content
+- [x] Launch editor with current content
+- [x] Save updated content
+- [x] Show success message
 
-### Step 9: CLI Commands - Delete
-- [ ] Implement `cfs instructions <category> delete <id>` command
-- [ ] Parse ID (handle both numeric ID and full filename)
-- [ ] Find document by ID
-- [ ] Show document preview (first few lines)
-- [ ] Prompt for confirmation
-- [ ] Delete file if confirmed
-- [ ] Show success message
+### Step 9: CLI Commands - Delete ✅ COMPLETE
+- [x] Implement `cfs instructions <category> delete <id>` command
+- [x] Parse ID (handle both numeric ID and full filename)
+- [x] Find document by ID
+- [x] Show document preview (first few lines)
+- [x] Prompt for confirmation (with --force flag to skip)
+- [x] Delete file if confirmed
+- [x] Show success message
 
-### Step 10: CLI Commands - View
-- [ ] Implement `cfs instructions view` command (all categories)
-- [ ] Implement `cfs instructions <category> view` command
-- [ ] Format output nicely (tree structure, tables, etc.)
-- [ ] Show document IDs, titles, and maybe metadata (date, size)
-- [ ] Use rich library for pretty formatting
+### Step 10: CLI Commands - View ✅ COMPLETE
+- [x] Implement `cfs instructions view` command (all categories)
+- [x] Implement `cfs instructions <category> view` command
+- [x] Format output nicely (tree structure, tables, etc.)
+- [x] Show document IDs, titles, and maybe metadata (date, size)
+- [x] Use rich library for pretty formatting
 
 ### Step 11: CLI Commands - Rules
 - [ ] Implement `cfs rules create` command
