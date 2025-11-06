@@ -118,11 +118,14 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 - [x] Show document IDs, titles, and maybe metadata (date, size)
 - [x] Use rich library for pretty formatting
 
-### Step 11: CLI Commands - Rules
-- [ ] Implement `cfs rules create` command
-- [ ] Prompt for rules document name/topic
-- [ ] Create document in `.cursor/rules/` directory
-- [ ] Optionally add boilerplate based on repo type (detect language, framework)
+### Step 11: CLI Commands - Rules ✅ COMPLETE
+- [x] Implement `cfs rules create` command
+- [x] Prompt for rules document name/topic
+- [x] Create document in `.cursor/rules/` directory
+- [x] Optionally add boilerplate based on repo type (detect language, framework)
+- [x] Detects Python, JavaScript/TypeScript, Ruby/Rails, Java, Go
+- [x] Generates appropriate globs patterns and frontmatter
+- [x] Supports --name and --edit flags
 
 ### Step 12: Error Handling & Validation
 - [ ] Add error handling for missing CFS structure

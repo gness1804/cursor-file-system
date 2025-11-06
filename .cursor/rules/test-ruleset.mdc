@@ -1,0 +1,21 @@
+---
+globs: *.py
+description: test-ruleset - python coding standards
+---
+# Test Ruleset
+
+This document provides Cursor AI with coding standards and best practices for this project.
+
+## Project Overview
+
+Test Ruleset project using python.
+
+**Package Manager**: pipenv
+
+## Code Standards
+
+<!-- Add your coding standards here -->
+
+## Best Practices
+
+<!-- Add best practices here -->
