@@ -127,13 +127,15 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 - [x] Generates appropriate globs patterns and frontmatter
 - [x] Supports --name and --edit flags
 
-### Step 12: Error Handling & Validation
-- [ ] Add error handling for missing CFS structure
-- [ ] Add error handling for invalid categories
-- [ ] Add error handling for missing documents
-- [ ] Add validation for document IDs
-- [ ] Add helpful error messages
-- [ ] Handle edge cases (empty categories, duplicate IDs, etc.)
+### Step 12: Error Handling & Validation ✅ COMPLETE
+- [x] Add error handling for missing CFS structure - Custom CFSNotFoundError exception
+- [x] Add error handling for invalid categories - Custom InvalidCategoryError exception
+- [x] Add error handling for missing documents - Custom DocumentNotFoundError exception
+- [x] Add validation for document IDs - Custom InvalidDocumentIDError and parse_document_id_from_string helper
+- [x] Add helpful error messages - Centralized handle_cfs_error() function with user-friendly messages
+- [x] Handle edge cases (empty categories, duplicate IDs, etc.) - Duplicate ID detection, permission error handling
+- [x] Custom exception hierarchy - CFSError base class with specific exception types
+- [x] Document operation errors - DocumentOperationError for file system issues
 
 ### Step 13: Testing
 - [ ] Write unit tests for core operations

@@ -9,6 +9,14 @@ from rich.table import Table
 from rich import box
 
 from cfs import core
+from cfs.exceptions import (
+    CFSError,
+    CFSNotFoundError,
+    InvalidCategoryError,
+    DocumentNotFoundError,
+    InvalidDocumentIDError,
+    DocumentOperationError,
+)
 
 app = typer.Typer(
     name="cfs",
@@ -17,6 +25,39 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+def handle_cfs_error(error: CFSError) -> None:
+    """Handle CFS-specific errors with user-friendly messages.
+
+    Args:
+        error: The CFS error to handle.
+    """
+    if isinstance(error, CFSNotFoundError):
+        console.print(f"[red]Error: {error.message}[/red]")
+    elif isinstance(error, InvalidCategoryError):
+        console.print(f"[red]Error: Invalid category '{error.category}'[/red]")
+        console.print(
+            f"[yellow]Valid categories: {', '.join(sorted(error.valid_categories))}[/yellow]",
+        )
+    elif isinstance(error, DocumentNotFoundError):
+        console.print(
+            f"[red]Error: Document with ID {error.doc_id} not found in '{error.category}' category[/red]",
+        )
+        console.print(
+            f"[yellow]Use 'cfs instructions {error.category} view' to list available documents[/yellow]",
+        )
+    elif isinstance(error, InvalidDocumentIDError):
+        console.print(f"[red]Error: {error.message}[/red]")
+        console.print(
+            "[yellow]Document ID should be a number (e.g., 1) or a filename (e.g., 1-title.md)[/yellow]",
+        )
+    elif isinstance(error, DocumentOperationError):
+        console.print(f"[red]Error: Failed to {error.operation}[/red]")
+        console.print(f"[red]{error.message}[/red]")
+    else:
+        console.print(f"[red]Error: {error}[/red]")
+
 
 # Create subcommand groups
 instructions_app = typer.Typer(
@@ -65,16 +106,21 @@ def create_category_commands() -> None:
                 ),
             ) -> None:
                 """Create a new document in this category."""
-                # Find CFS root
-                cfs_root = core.find_cfs_root()
-                if cfs_root is None:
-                    console.print(
-                        "[red]Error: CFS structure not found. Run 'cfs init' first.[/red]",
-                    )
+                from cfs import documents
+
+                try:
+                    # Find CFS root
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
-                # Get category path
-                category_path = core.get_category_path(cfs_root, cat)
+                try:
+                    # Get category path
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
 
                 # Get title if not provided
                 if title is None:
@@ -92,15 +138,16 @@ def create_category_commands() -> None:
                     content = editor.edit_content()
 
                 # Create document
-                from cfs import documents
-
                 try:
                     doc_path = documents.create_document(category_path, title, content)
                     console.print(
                         f"[green]✓ Created document: {doc_path}[/green]",
                     )
-                except Exception as e:
-                    console.print(f"[red]Error creating document: {e}[/red]")
+                except (DocumentOperationError, ValueError) as e:
+                    if isinstance(e, DocumentOperationError):
+                        handle_cfs_error(e)
+                    else:
+                        console.print(f"[red]Error: {e}[/red]")
                     raise typer.Abort()
 
             @category_app.command("edit")
@@ -109,41 +156,41 @@ def create_category_commands() -> None:
             ) -> None:
                 """Edit an existing document in this category."""
                 from cfs import documents
-                from cfs.documents import parse_document_id
+                from cfs.documents import parse_document_id_from_string
+                from cfs import editor
 
-                # Find CFS root
-                cfs_root = core.find_cfs_root()
-                if cfs_root is None:
-                    console.print(
-                        "[red]Error: CFS structure not found. Run 'cfs init' first.[/red]",
-                    )
+                try:
+                    # Find CFS root
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
-                # Get category path
-                category_path = core.get_category_path(cfs_root, cat)
+                try:
+                    # Get category path
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
 
                 # Parse ID (handle both numeric ID and filename)
-                parsed_id = parse_document_id(doc_id)
-                if parsed_id is None:
-                    try:
-                        parsed_id = int(doc_id)
-                    except ValueError:
-                        console.print(
-                            f"[red]Error: Invalid document ID '{doc_id}'[/red]",
-                        )
-                        raise typer.Abort()
+                try:
+                    parsed_id = parse_document_id_from_string(doc_id)
+                except InvalidDocumentIDError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
 
                 # Get current content
-                current_content = documents.get_document(category_path, parsed_id)
-                if current_content is None:
-                    console.print(
-                        f"[red]Error: Document with ID {parsed_id} not found in {cat}[/red]",
-                    )
+                try:
+                    current_content = documents.get_document(category_path, parsed_id)
+                except DocumentNotFoundError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+                except DocumentOperationError as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
                 # Launch editor with current content
-                from cfs import editor
-
                 console.print(f"[yellow]Opening editor for document {parsed_id}...[/yellow]")
                 edited_content = editor.edit_content(current_content)
 
@@ -153,8 +200,8 @@ def create_category_commands() -> None:
                     console.print(
                         f"[green]✓ Updated document: {doc_path}[/green]",
                     )
-                except Exception as e:
-                    console.print(f"[red]Error updating document: {e}[/red]")
+                except (DocumentNotFoundError, DocumentOperationError) as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
             @category_app.command("delete")
@@ -169,37 +216,38 @@ def create_category_commands() -> None:
             ) -> None:
                 """Delete a document from this category."""
                 from cfs import documents
-                from cfs.documents import parse_document_id
+                from cfs.documents import parse_document_id_from_string
 
-                # Find CFS root
-                cfs_root = core.find_cfs_root()
-                if cfs_root is None:
-                    console.print(
-                        "[red]Error: CFS structure not found. Run 'cfs init' first.[/red]",
-                    )
+                try:
+                    # Find CFS root
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
-                # Get category path
-                category_path = core.get_category_path(cfs_root, cat)
+                try:
+                    # Get category path
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
 
                 # Parse ID (handle both numeric ID and filename)
-                parsed_id = parse_document_id(doc_id)
-                if parsed_id is None:
-                    try:
-                        parsed_id = int(doc_id)
-                    except ValueError:
-                        console.print(
-                            f"[red]Error: Invalid document ID '{doc_id}'[/red]",
-                        )
-                        raise typer.Abort()
+                try:
+                    parsed_id = parse_document_id_from_string(doc_id)
+                except InvalidDocumentIDError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
 
                 # Find document to show preview
                 doc_path = documents.find_document_by_id(category_path, parsed_id)
                 if doc_path is None or not doc_path.exists():
-                    console.print(
-                        f"[red]Error: Document with ID {parsed_id} not found in {cat}[/red]",
-                    )
-                    raise typer.Abort()
+                    # Use exception for consistent error handling
+                    try:
+                        raise DocumentNotFoundError(parsed_id, cat)
+                    except DocumentNotFoundError as e:
+                        handle_cfs_error(e)
+                        raise typer.Abort()
 
                 # Show document preview (first few lines)
                 try:
@@ -225,18 +273,12 @@ def create_category_commands() -> None:
 
                 # Delete document
                 try:
-                    deleted = documents.delete_document(category_path, parsed_id)
-                    if deleted:
-                        console.print(
-                            f"[green]✓ Deleted document: {doc_path}[/green]",
-                        )
-                    else:
-                        console.print(
-                            "[red]Error: Document not found[/red]",
-                        )
-                        raise typer.Abort()
-                except Exception as e:
-                    console.print(f"[red]Error deleting document: {e}[/red]")
+                    documents.delete_document(category_path, parsed_id)
+                    console.print(
+                        f"[green]✓ Deleted document: {doc_path}[/green]",
+                    )
+                except (DocumentNotFoundError, DocumentOperationError) as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
             @category_app.command("view")
@@ -245,12 +287,18 @@ def create_category_commands() -> None:
                 from cfs import documents
                 from datetime import datetime
 
-                # Find CFS root
-                cfs_root = core.find_cfs_root()
-                if cfs_root is None:
-                    console.print(
-                        "[red]Error: CFS structure not found. Run 'cfs init' first.[/red]",
-                    )
+                try:
+                    # Find CFS root
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                # Validate category (get_category_path will raise if invalid)
+                try:
+                    core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
                     raise typer.Abort()
 
                 # List documents in this category
@@ -304,13 +352,20 @@ def view_all(
     from cfs import documents
     from datetime import datetime
 
-    # Find CFS root
-    cfs_root = core.find_cfs_root()
-    if cfs_root is None:
-        console.print(
-            "[red]Error: CFS structure not found. Run 'cfs init' first.[/red]",
-        )
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
         raise typer.Abort()
+
+    # Validate category if provided
+    if category:
+        try:
+            core.get_category_path(cfs_root, category)
+        except InvalidCategoryError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
 
     # List documents
     docs_dict = documents.list_documents(cfs_root, category)
@@ -499,12 +554,11 @@ def create_rule(
     """Create a new Cursor rules document."""
     from cfs import documents
 
-    # Find CFS root
-    cfs_root = core.find_cfs_root()
-    if cfs_root is None:
-        console.print(
-            "[red]Error: CFS structure not found. Run 'cfs init' first.[/red]",
-        )
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
         raise typer.Abort()
 
     # Get rules directory path

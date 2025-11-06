@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+from cfs.exceptions import DocumentNotFoundError, DocumentOperationError, InvalidDocumentIDError
+
 
 def get_next_id(category_path: Path) -> int:
     """Get the next available ID for a category.
@@ -12,22 +14,67 @@ def get_next_id(category_path: Path) -> int:
 
     Returns:
         Next available ID (starts at 1).
+
+    Raises:
+        DocumentOperationError: If there's an issue reading the directory.
     """
     if not category_path.exists():
         return 1
 
     existing_ids = []
-    for file in category_path.iterdir():
-        if file.is_file() and file.suffix == ".md":
-            # Extract ID from filename (format: ID-title.md)
-            parts = file.stem.split("-", 1)
-            if parts and parts[0].isdigit():
-                existing_ids.append(int(parts[0]))
+    try:
+        for file in category_path.iterdir():
+            if file.is_file() and file.suffix == ".md":
+                # Extract ID from filename (format: ID-title.md)
+                parts = file.stem.split("-", 1)
+                if parts and parts[0].isdigit():
+                    existing_ids.append(int(parts[0]))
 
-    if not existing_ids:
-        return 1
+        if not existing_ids:
+            return 1
 
-    return max(existing_ids) + 1
+        # Check for duplicate IDs (edge case)
+        if len(existing_ids) != len(set(existing_ids)):
+            # Found duplicates - warn but continue
+            # This shouldn't happen in normal operation
+            import warnings
+
+            warnings.warn(
+                f"Duplicate IDs detected in {category_path}. "
+                "This may indicate a file system issue.",
+                UserWarning,
+            )
+
+        return max(existing_ids) + 1
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError(
+            "get next ID",
+            f"Cannot read category directory: {e}",
+        )
+
+
+def parse_document_id_from_string(doc_id: str) -> int:
+    """Parse document ID from string (handles both numeric ID and filename).
+
+    Args:
+        doc_id: Document ID as string (numeric ID or filename).
+
+    Returns:
+        Parsed document ID as integer.
+
+    Raises:
+        InvalidDocumentIDError: If doc_id cannot be parsed as a valid ID.
+    """
+    # First try parsing as filename
+    parsed_id = parse_document_id(doc_id)
+    if parsed_id is not None:
+        return parsed_id
+
+    # Try parsing as numeric ID
+    try:
+        return int(doc_id)
+    except ValueError:
+        raise InvalidDocumentIDError(doc_id)
 
 
 def parse_document_id(filename: str) -> Optional[int]:
@@ -113,10 +160,20 @@ def create_document(category_path: Path, title: str, content: str = "") -> Path:
         Path to the created document file.
 
     Raises:
-        OSError: If file cannot be created.
+        ValueError: If title is empty or invalid.
+        DocumentOperationError: If file cannot be created.
     """
+    if not title or not title.strip():
+        raise ValueError("Document title cannot be empty")
+
     # Ensure category directory exists
-    category_path.mkdir(parents=True, exist_ok=True)
+    try:
+        category_path.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError(
+            "create document",
+            f"Cannot create category directory: {e}",
+        )
 
     # Get next available ID
     doc_id = get_next_id(category_path)
@@ -128,13 +185,23 @@ def create_document(category_path: Path, title: str, content: str = "") -> Path:
     filename = f"{doc_id}-{kebab_title}.md" if kebab_title else f"{doc_id}.md"
     file_path = category_path / filename
 
+    # Check for duplicate filename (edge case)
+    if file_path.exists():
+        # This shouldn't happen with proper ID generation, but handle it
+        raise DocumentOperationError(
+            "create document",
+            f"File already exists: {file_path}. This may indicate a duplicate ID issue.",
+        )
+
     # Write content to file
-    file_path.write_text(content, encoding="utf-8")
+    try:
+        file_path.write_text(content, encoding="utf-8")
+        return file_path
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("create document", str(e))
 
-    return file_path
 
-
-def get_document(category_path: Path, doc_id: int) -> Optional[str]:
+def get_document(category_path: Path, doc_id: int) -> str:
     """Find and read a document by its ID.
 
     Args:
@@ -142,13 +209,22 @@ def get_document(category_path: Path, doc_id: int) -> Optional[str]:
         doc_id: Document ID to retrieve.
 
     Returns:
-        Document content as string if found, None otherwise.
+        Document content as string.
+
+    Raises:
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If file cannot be read.
     """
     doc_path = find_document_by_id(category_path, doc_id)
     if doc_path is None or not doc_path.exists():
-        return None
+        # Try to determine category name for better error message
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
 
-    return doc_path.read_text(encoding="utf-8")
+    try:
+        return doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        raise DocumentOperationError("read document", str(e))
 
 
 def edit_document(category_path: Path, doc_id: int, content: str) -> Path:
@@ -163,36 +239,41 @@ def edit_document(category_path: Path, doc_id: int, content: str) -> Path:
         Path to the updated document file.
 
     Raises:
-        FileNotFoundError: If document is not found.
-        OSError: If file cannot be written.
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If file cannot be written.
     """
     doc_path = find_document_by_id(category_path, doc_id)
     if doc_path is None or not doc_path.exists():
-        raise FileNotFoundError(f"Document with ID {doc_id} not found in category")
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
 
-    doc_path.write_text(content, encoding="utf-8")
-    return doc_path
+    try:
+        doc_path.write_text(content, encoding="utf-8")
+        return doc_path
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("update document", str(e))
 
 
-def delete_document(category_path: Path, doc_id: int) -> bool:
+def delete_document(category_path: Path, doc_id: int) -> None:
     """Delete a document by its ID.
 
     Args:
         category_path: Path to the category directory.
         doc_id: Document ID to delete.
 
-    Returns:
-        True if document was deleted, False if not found.
-
     Raises:
-        OSError: If file cannot be deleted.
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If file cannot be deleted.
     """
     doc_path = find_document_by_id(category_path, doc_id)
     if doc_path is None or not doc_path.exists():
-        return False
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
 
-    doc_path.unlink()
-    return True
+    try:
+        doc_path.unlink()
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError("delete document", str(e))
 
 
 def list_documents(

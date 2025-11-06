@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Optional
 
+from cfs.exceptions import CFSNotFoundError, InvalidCategoryError
+
 
 # Valid CFS categories
 VALID_CATEGORIES = {
@@ -18,14 +20,17 @@ VALID_CATEGORIES = {
 }
 
 
-def find_cfs_root(start_path: Optional[Path] = None) -> Optional[Path]:
+def find_cfs_root(start_path: Optional[Path] = None) -> Path:
     """Find the .cursor directory by walking up from start_path.
 
     Args:
         start_path: Starting directory path. Defaults to current working directory.
 
     Returns:
-        Path to .cursor directory if found, None otherwise.
+        Path to .cursor directory if found.
+
+    Raises:
+        CFSNotFoundError: If .cursor directory is not found.
     """
     if start_path is None:
         start_path = Path.cwd()
@@ -41,7 +46,12 @@ def find_cfs_root(start_path: Optional[Path] = None) -> Optional[Path]:
             return cursor_dir
         current = current.parent
 
-    return None
+    # Not found - provide helpful error message
+    current_dir = Path.cwd()
+    raise CFSNotFoundError(
+        f"CFS structure not found. No .cursor directory found starting from {current_dir}.\n"
+        "Run 'cfs init' to initialize CFS structure in the current directory."
+    )
 
 
 def get_category_path(cfs_root: Path, category: str) -> Path:
@@ -55,13 +65,10 @@ def get_category_path(cfs_root: Path, category: str) -> Path:
         Path to the category directory.
 
     Raises:
-        ValueError: If category is not valid.
+        InvalidCategoryError: If category is not valid.
     """
     if category not in VALID_CATEGORIES:
-        raise ValueError(
-            f"Invalid category: {category}. "
-            f"Valid categories are: {', '.join(sorted(VALID_CATEGORIES))}"
-        )
+        raise InvalidCategoryError(category, VALID_CATEGORIES)
 
     return cfs_root / category
 
