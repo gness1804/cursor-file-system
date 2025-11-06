@@ -1,0 +1,395 @@
+---
+globs: *.py
+description: Cursor File Structure CLI - Python CLI development standards for CFS tool
+---
+
+# CFS CLI - Cursor Rules
+
+This document provides Cursor AI with specific guidance for working with the Cursor File Structure (CFS) CLI codebase - a Python CLI tool for managing Cursor instruction documents.
+
+## Project Overview
+
+CFS CLI is a command-line tool built with Python and Typer that enables developers to create, edit, view, and delete Cursor instruction documents within a structured file system framework.
+
+## Technology Stack
+
+- **Language**: Python 3.8+
+- **CLI Framework**: Typer (modern Python CLI framework)
+- **Rich Output**: Rich library for formatted CLI output
+- **File Operations**: pathlib.Path (preferred over os.path)
+- **Text Editor Integration**: subprocess for launching editors
+- **Testing**: pytest with pytest-cov for coverage
+- **Code Quality**: Black (formatting), Ruff (linting)
+- **Packaging**: setuptools with pyproject.toml (PEP 518/621)
+
+## Code Style & Formatting
+
+### Line Length & Formatting
+- **Line length**: 100 characters (as configured in pyproject.toml)
+- **Formatter**: Black with target Python 3.8-3.11
+- **Linter**: Ruff (configured in pyproject.toml)
+- Always run `black src/` and `ruff check src/` before committing
+
+### PEP 8 Compliance
+- Follow PEP 8 standards
+- Use 4 spaces for indentation (no tabs)
+- Maximum line length: 100 characters
+- Use blank lines to separate top-level functions and classes
+- Use consistent naming: `snake_case` for functions/variables, `PascalCase` for classes
+
+## Project Structure
+
+```
+cursor-instructions-cli/
+├── src/
+│   └── cfs/
+│       ├── __init__.py          # Package initialization, exports version
+│       ├── cli.py               # Main CLI entry point with Typer app
+│       ├── core.py              # Core CFS operations (path detection, validation)
+│       ├── documents.py         # Document CRUD operations
+│       └── editor.py            # Text editor integration
+├── tests/                       # Test files (pytest)
+├── pyproject.toml              # Project configuration
+└── README.md
+```
+
+- Keep all source code in `src/cfs/` directory
+- Tests go in `tests/` directory
+- Each module should have a clear, single responsibility
+
+## Type Hints
+
+**CRITICAL**: Always use type hints for function signatures and return types.
+
+```python
+from pathlib import Path
+from typing import Optional
+
+def find_cfs_root(start_path: Optional[Path] = None) -> Optional[Path]:
+    """Find the .cursor directory by walking up from start_path."""
+    ...
+```
+
+- Use `Optional[T]` for nullable types
+- Use `Path` from pathlib instead of `str` for file paths
+- Import types from `typing` module explicitly
+- Use return type `None` explicitly: `def function() -> None:`
+
+## Documentation Standards
+
+### Docstrings
+All functions must have docstrings following Google/NumPy style:
+
+```python
+def get_next_id(category_path: Path) -> int:
+    """Get the next available ID for a category.
+    
+    Args:
+        category_path: Path to the category directory.
+        
+    Returns:
+        Next available ID (starts at 1).
+    """
+```
+
+- Use triple-quoted strings
+- Include Args section for all parameters
+- Include Returns section describing return value and type
+- Include Raises section if function raises exceptions
+- Keep descriptions concise but informative
+
+## CLI Development Patterns (Typer)
+
+### Command Structure
+```python
+import typer
+
+app = typer.Typer(
+    name="cfs",
+    help="Cursor File Structure (CFS) CLI - Manage Cursor instruction documents",
+)
+
+@app.command()
+def command_name(
+    arg: str = typer.Argument(..., help="Description"),
+    flag: bool = typer.Option(False, "--flag", help="Flag description"),
+) -> None:
+    """Command help text shown in --help."""
+    # Implementation
+```
+
+### Best Practices
+- Use `typer.Argument()` for required positional arguments
+- Use `typer.Option()` for optional flags/options
+- Provide helpful descriptions in all Argument/Option definitions
+- Use `typer.echo()` instead of `print()` for output
+- Use Rich for formatted output (tables, colors, etc.) when appropriate
+- Return `None` explicitly from command functions
+- Group related commands using Typer subcommands/apps
+
+### Error Handling in CLI
+```python
+from typer import Abort
+
+@app.command()
+def some_command():
+    if not condition:
+        typer.echo("Error message", err=True)
+        raise typer.Abort()
+    # Success path
+```
+
+- Use `typer.Abort()` to exit with error code
+- Send error messages to stderr with `err=True` in `typer.echo()`
+- Provide clear, actionable error messages
+
+## File System Operations
+
+### Use pathlib.Path
+**ALWAYS** use `pathlib.Path` instead of `os.path`:
+
+```python
+from pathlib import Path
+
+# Good
+path = Path(".cursor") / "rules"
+if path.exists():
+    ...
+
+# Bad
+import os
+path = os.path.join(".cursor", "rules")
+```
+
+- Use `/` operator for path joining: `base_path / "subdir" / "file.md"`
+- Use `.exists()`, `.is_dir()`, `.is_file()` methods
+- Use `.resolve()` to get absolute paths when needed
+- Use `.mkdir(parents=True, exist_ok=True)` for creating directories
+- Use `.unlink()` for deleting files
+
+### File Reading/Writing
+```python
+# Reading
+with open(file_path, "r") as f:
+    content = f.read()
+
+# Writing
+with open(file_path, "w") as f:
+    f.write(content)
+
+# Or using pathlib
+content = file_path.read_text()
+file_path.write_text(content)
+```
+
+## Error Handling
+
+### Exception Types
+- Use specific exception types: `ValueError`, `FileNotFoundError`, `PermissionError`
+- Raise exceptions with descriptive messages
+- Use custom exceptions for domain-specific errors when appropriate
+
+### Error Handling Pattern
+```python
+def operation(category: str) -> Path:
+    """Operation that validates input."""
+    if not validate_category(category):
+        raise ValueError(
+            f"Invalid category: {category}. "
+            f"Valid categories are: {', '.join(sorted(VALID_CATEGORIES))}"
+        )
+    # Continue with operation
+```
+
+- Validate inputs early
+- Raise exceptions with helpful error messages
+- Include context in error messages (what was wrong, what's valid)
+
+## Testing Standards
+
+### Test Structure
+```python
+import pytest
+from pathlib import Path
+from cfs.core import find_cfs_root
+
+def test_find_cfs_root_finds_nested_cursor_dir(tmp_path: Path) -> None:
+    """Test that find_cfs_root locates .cursor directory."""
+    cursor_dir = tmp_path / ".cursor"
+    cursor_dir.mkdir()
+    
+    result = find_cfs_root(tmp_path)
+    
+    assert result == cursor_dir
+```
+
+### Testing Best Practices
+- Use descriptive test function names: `test_function_name_scenario_expected_result`
+- Use `tmp_path` fixture from pytest for temporary directories
+- Use `@pytest.mark.parametrize` for multiple test cases
+- Mock external dependencies (file system, subprocess) when appropriate
+- Test both success and failure paths
+- Include docstrings explaining what the test verifies
+
+### Running Tests
+```bash
+pytest                    # Run all tests
+pytest tests/            # Run tests in directory
+pytest -v               # Verbose output
+pytest --cov=src        # With coverage
+```
+
+## Constants & Configuration
+
+### Constant Definitions
+```python
+# Valid CFS categories
+VALID_CATEGORIES = {
+    "rules",
+    "research",
+    "bugs",
+    "features",
+    "refactors",
+    "docs",
+    "progress",
+    "qa",
+    "tmp",
+}
+```
+
+- Define constants at module level in UPPER_SNAKE_CASE
+- Use sets for membership testing
+- Use tuples for immutable sequences
+- Document the purpose of constants
+
+## Module Organization
+
+### Imports Order
+1. Standard library imports
+2. Third-party imports
+3. Local application imports
+
+```python
+# Standard library
+from pathlib import Path
+from typing import Optional
+
+# Third-party
+import typer
+
+# Local
+from cfs.core import find_cfs_root
+```
+
+- Group imports as above
+- Use absolute imports
+- Avoid `from module import *`
+
+## CLI UX Guidelines
+
+### User Feedback
+- Always provide feedback for user actions (create, edit, delete)
+- Use colors/spacing appropriately with Rich for better readability
+- Show progress for long-running operations
+- Display helpful error messages with suggestions
+
+### Confirmation Prompts
+```python
+import typer
+
+def confirm_action(message: str) -> bool:
+    """Confirm an action with the user."""
+    response = typer.prompt(message, default="n")
+    return response.lower() in ["y", "yes"]
+```
+
+### Output Formatting
+- Use Rich tables for listing documents
+- Use Rich panels for showing document content
+- Use appropriate colors: green for success, yellow for warnings, red for errors
+- Keep output concise but informative
+
+## Subprocess & External Commands
+
+### Editor Integration
+```python
+import subprocess
+import tempfile
+
+def launch_editor(file_path: Path) -> None:
+    """Launch editor for file."""
+    editor = detect_editor()
+    subprocess.run([editor, str(file_path)], check=False)
+```
+
+- Use `subprocess.run()` for running external commands
+- Handle `subprocess.CalledProcessError` appropriately
+- Use `check=False` when exit code doesn't indicate failure (e.g., editors)
+- Clean up temporary files in `finally` blocks
+- Use `/dev/tty` for reading user input in non-interactive contexts (see pre-commit hook)
+
+## Common Patterns
+
+### Finding CFS Root
+```python
+def find_cfs_root(start_path: Optional[Path] = None) -> Optional[Path]:
+    """Find .cursor directory by walking up directory tree."""
+    current = (start_path or Path.cwd()).resolve()
+    
+    while current != current.parent:
+        cursor_dir = current / ".cursor"
+        if cursor_dir.exists() and cursor_dir.is_dir():
+            return cursor_dir
+        current = current.parent
+    
+    return None
+```
+
+### ID Generation
+- Each category maintains its own ID sequence starting at 1
+- Parse IDs from filenames: `{id}-{kebab-case-title}.md`
+- Find next ID by scanning existing files and taking max + 1
+
+### Filename Generation
+- Use kebab-case for document filenames
+- Format: `{id}-{kebab-case-title}.md`
+- Handle edge cases (special characters, multiple spaces, etc.)
+
+## Code Quality Checklist
+
+Before committing code, ensure:
+- [ ] All functions have type hints
+- [ ] All functions have docstrings
+- [ ] Code passes `black` formatting check
+- [ ] Code passes `ruff` linting check
+- [ ] Tests are written for new functionality
+- [ ] Error handling is in place
+- [ ] File paths use `pathlib.Path`
+- [ ] CLI commands have helpful descriptions
+- [ ] Error messages are clear and actionable
+
+## Anti-Patterns to Avoid
+
+1. ❌ **Don't use `os.path`** - Use `pathlib.Path` instead
+2. ❌ **Don't use `str` for paths** - Use `Path` type hints
+3. ❌ **Don't skip type hints** - They're required for all functions
+4. ❌ **Don't skip docstrings** - Every function needs documentation
+5. ❌ **Don't use `print()`** - Use `typer.echo()` in CLI code
+6. ❌ **Don't catch bare `Exception`** - Catch specific exceptions
+7. ❌ **Don't ignore subprocess errors** - Handle `CalledProcessError`
+8. ❌ **Don't hardcode paths** - Use pathlib operations
+
+## Development Workflow
+
+1. **Make changes** in `src/cfs/` modules
+2. **Run formatters**: `black src/` and `ruff check src/`
+3. **Write tests** in `tests/` directory
+4. **Run tests**: `pytest`
+5. **Test CLI**: Install with `pip install -e .` and test commands
+6. **Commit** using conventional commits format
+
+## Additional Resources
+
+- [MVP Implementation Plan](mdc:.cursor/progress/1-mvp-implementation-plan.md) - Current progress and roadmap
+- [README.md](mdc:README.md) - Project overview and usage
+- [pyproject.toml](mdc:pyproject.toml) - Project configuration and dependencies
