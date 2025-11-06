@@ -129,13 +129,23 @@ def create_category_commands() -> None:
                         console.print("[red]Error: Title cannot be empty[/red]")
                         raise typer.Abort()
 
-                # Get content - prompt if edit flag is set
+                # Get content - prompt if edit flag is set, or ask user if not set
                 content = ""
                 if edit:
                     from cfs import editor
 
                     console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
                     content = editor.edit_content()
+                else:
+                    # Prompt user: edit now or create empty?
+                    if typer.confirm(
+                        f"Would you like to edit '{title}' now?",
+                        default=False,
+                    ):
+                        from cfs import editor
+
+                        console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
+                        content = editor.edit_content()
 
                 # Create document
                 try:
@@ -493,9 +503,19 @@ def init(
     # Create init.md if it doesn't exist
     init_file = cursor_dir / "init.md"
     if not init_file.exists():
-        init_content = """# CFS Initialization
+        # Detect project type for better boilerplate
+        repo_type = _detect_repo_type(cursor_dir)
+        language_info = ""
+        if repo_type.get("language"):
+            language_info = f"\n**Primary Language**: {repo_type['language']}"
+            if repo_type.get("framework"):
+                language_info += f"\n**Framework**: {repo_type['framework']}"
+            if repo_type.get("package_manager"):
+                language_info += f"\n**Package Manager**: {repo_type['package_manager']}"
 
-This directory was initialized using the Cursor File Structure (CFS) CLI.
+        init_content = f"""# CFS Initialization
+
+This directory was initialized using the Cursor File Structure (CFS) CLI.{language_info}
 
 ## Categories
 
@@ -512,6 +532,22 @@ This directory was initialized using the Cursor File Structure (CFS) CLI.
 ## Usage
 
 Use the `cfs` CLI tool to manage documents in these categories.
+
+### Quick Start
+
+```bash
+# Create a new bug investigation document
+cfs instructions bugs create
+
+# Edit a document
+cfs instructions bugs edit 1
+
+# View all documents
+cfs instructions view
+
+# Create a rules document
+cfs rules create
+```
 
 For help: `cfs --help`
 """
