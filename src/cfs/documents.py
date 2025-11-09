@@ -320,23 +320,32 @@ def list_documents(
             if file_path.is_file() and file_path.suffix == ".md":
                 # Parse ID and title from filename
                 parsed_id = parse_document_id(file_path.name)
+                conforms_to_naming = parsed_id is not None
+
+                # Handle files with or without ID prefix
                 if parsed_id is not None:
                     # Extract title from filename (after ID- prefix)
                     stem = file_path.stem
                     title = stem.split("-", 1)[1] if "-" in stem else stem
+                else:
+                    # File doesn't have ID prefix - use 0 as ID and full stem as title
+                    # This handles legacy files or manually created files
+                    parsed_id = 0
+                    title = file_path.stem
 
-                    # Get file stats
-                    stat = file_path.stat()
+                # Get file stats
+                stat = file_path.stat()
 
-                    doc_list.append(
-                        {
-                            "id": parsed_id,
-                            "title": title,
-                            "path": file_path,
-                            "size": stat.st_size,
-                            "modified": stat.st_mtime,
-                        }
-                    )
+                doc_list.append(
+                    {
+                        "id": parsed_id,
+                        "title": title,
+                        "path": file_path,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                        "conforms_to_naming": conforms_to_naming,
+                    }
+                )
 
         # Sort by ID
         doc_list.sort(key=lambda x: x["id"])

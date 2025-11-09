@@ -325,6 +325,7 @@ def create_category_commands() -> None:
                 table.add_column("Title", style="magenta")
                 table.add_column("Size", justify="right", style="green")
                 table.add_column("Modified", style="yellow")
+                table.add_column("Notes", style="yellow")
 
                 for doc in doc_list:
                     size_kb = doc["size"] / 1024
@@ -332,11 +333,25 @@ def create_category_commands() -> None:
                     modified_time = datetime.fromtimestamp(doc["modified"])
                     modified_str = modified_time.strftime("%Y-%m-%d %H:%M")
 
+                    # Add warning for files that don't conform to naming convention
+                    notes = ""
+                    if not doc.get("conforms_to_naming", True):
+                        from cfs.documents import kebab_case
+
+                        suggested_name = kebab_case(doc["title"])
+                        # Find next available ID from conforming documents in this category
+                        conforming_ids = [
+                            d["id"] for d in doc_list if d.get("conforms_to_naming", True)
+                        ]
+                        next_id = max(conforming_ids, default=0) + 1
+                        notes = f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+
                     table.add_row(
                         str(doc["id"]),
                         doc["title"],
                         size_str,
                         modified_str,
+                        notes,
                     )
 
                 console.print()
@@ -404,6 +419,7 @@ def view_all(
         table.add_column("Title", style="magenta")
         table.add_column("Size", justify="right", style="green")
         table.add_column("Modified", style="yellow")
+        table.add_column("Notes", style="yellow")
 
         for doc in doc_list:
             size_kb = doc["size"] / 1024
@@ -411,17 +427,36 @@ def view_all(
             modified_time = datetime.fromtimestamp(doc["modified"])
             modified_str = modified_time.strftime("%Y-%m-%d %H:%M")
 
+            # Add warning for files that don't conform to naming convention
+            notes = ""
+            if not doc.get("conforms_to_naming", True):
+                from cfs.documents import kebab_case
+
+                suggested_name = kebab_case(doc["title"])
+                # Find next available ID from conforming documents in this category
+                conforming_ids = [d["id"] for d in doc_list if d.get("conforms_to_naming", True)]
+                next_id = max(conforming_ids, default=0) + 1
+                notes = f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+
             table.add_row(
                 str(doc["id"]),
                 doc["title"],
                 size_str,
                 modified_str,
+                notes,
             )
 
         console.print()
         console.print(table)
     else:
         # All categories view
+        # Check if any categories have documents
+        has_documents = any(doc_list for doc_list in docs_dict.values())
+
+        if not has_documents:
+            console.print("[yellow]No documents found[/yellow]")
+            return
+
         for cat, doc_list in sorted(docs_dict.items()):
             if not doc_list:
                 continue
@@ -432,6 +467,7 @@ def view_all(
             table.add_column("Title", style="magenta")
             table.add_column("Size", justify="right", style="green")
             table.add_column("Modified", style="yellow")
+            table.add_column("Notes", style="yellow")
 
             for doc in doc_list:
                 size_kb = doc["size"] / 1024
@@ -439,11 +475,25 @@ def view_all(
                 modified_time = datetime.fromtimestamp(doc["modified"])
                 modified_str = modified_time.strftime("%Y-%m-%d %H:%M")
 
+                # Add warning for files that don't conform to naming convention
+                notes = ""
+                if not doc.get("conforms_to_naming", True):
+                    from cfs.documents import kebab_case
+
+                    suggested_name = kebab_case(doc["title"])
+                    # Find next available ID from conforming documents in this category
+                    conforming_ids = [
+                        d["id"] for d in doc_list if d.get("conforms_to_naming", True)
+                    ]
+                    next_id = max(conforming_ids, default=0) + 1
+                    notes = f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+
                 table.add_row(
                     str(doc["id"]),
                     doc["title"],
                     size_str,
                     modified_str,
+                    notes,
                 )
 
             console.print(table)
