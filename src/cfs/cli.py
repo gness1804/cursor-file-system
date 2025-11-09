@@ -29,20 +29,20 @@ console = Console()
 
 def get_document_notes(doc: dict, doc_list: list[dict]) -> str:
     """Generate notes/warning message for a document.
-    
+
     Args:
         doc: Document dictionary with 'conforms_to_naming' and 'title' keys.
         doc_list: List of all documents in the same category.
-        
+
     Returns:
         Notes string with warning if document doesn't conform to naming convention,
         empty string otherwise.
     """
     if doc.get("conforms_to_naming", True):
         return ""
-    
+
     from cfs.documents import kebab_case
-    
+
     suggested_name = kebab_case(doc["title"])
     # Find next available ID from conforming documents in this category
     conforming_ids = [d["id"] for d in doc_list if d.get("conforms_to_naming", True)]
@@ -492,6 +492,85 @@ def view_all(
                 )
 
             console.print(table)
+
+
+@instructions_app.command("order")
+def order_documents_command(
+    category: str = typer.Argument(..., help="Category name"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "--yes",
+        help="Skip confirmation and rename immediately",
+    ),
+) -> None:
+    """Order documents in a category by renaming them to follow CFS naming convention."""
+    from cfs import documents
+
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Validate category
+    try:
+        category_path = core.get_category_path(cfs_root, category)
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Get preview of rename operations (dry run)
+    try:
+        rename_operations = documents.order_documents(category_path, dry_run=True)
+    except DocumentOperationError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Check if any changes are needed
+    if not rename_operations:
+        console.print(
+            f"[green]✓ All files in {category} category already follow the naming convention[/green]",
+        )
+        return
+
+    # Display preview table
+    console.print(f"\n[bold]Preview: Renaming files in {category} category[/bold]")
+    table = Table(box=box.ROUNDED)
+    table.add_column("Current Name", style="cyan")
+    table.add_column("New Name", style="green")
+    table.add_column("ID", style="yellow", justify="right")
+
+    for op in rename_operations:
+        table.add_row(
+            op["old_path"].name,
+            op["new_path"].name,
+            str(op["id"]),
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
+
+    # Confirm before executing (unless --force flag is set)
+    if not force:
+        if not typer.confirm(
+            f"Rename {len(rename_operations)} file(s) in {category} category?",
+            default=False,
+        ):
+            console.print("[yellow]Operation cancelled[/yellow]")
+            raise typer.Abort()
+
+    # Execute renames
+    try:
+        documents.order_documents(category_path, dry_run=False)
+        console.print(
+            f"[green]✓ Renamed {len(rename_operations)} file(s) in {category} category[/green]",
+        )
+    except DocumentOperationError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
 
 
 # Global options callback

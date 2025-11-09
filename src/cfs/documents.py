@@ -352,3 +352,136 @@ def list_documents(
         documents[cat] = doc_list
 
     return documents
+
+
+def order_documents(category_path: Path, dry_run: bool = True) -> List[Dict[str, Any]]:
+    """Order documents in a category by renaming them to follow CFS naming convention.
+
+    Args:
+        category_path: Path to the category directory.
+        dry_run: If True, return rename operations without executing. If False, perform renames.
+
+    Returns:
+        List of rename operation dictionaries with keys: 'old_path', 'new_path', 'id', 'title'.
+
+    Raises:
+        DocumentOperationError: If there's an issue reading or renaming files.
+    """
+    if not category_path.exists():
+        return []
+
+    # Collect all .md files
+    files = []
+    try:
+        for file_path in category_path.iterdir():
+            if file_path.is_file() and file_path.suffix == ".md":
+                # Extract title from filename
+                parsed_id = parse_document_id(file_path.name)
+                stem = file_path.stem
+
+                if parsed_id is not None:
+                    # File has ID prefix - extract title after ID
+                    title = stem.split("-", 1)[1] if "-" in stem else stem
+                else:
+                    # File doesn't have ID prefix - use full stem as title
+                    title = stem
+
+                files.append(
+                    {
+                        "path": file_path,
+                        "title": title,
+                    }
+                )
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError(
+            "order documents",
+            f"Cannot read category directory: {e}",
+        )
+
+    if not files:
+        return []
+
+    # Sort files alphabetically by current filename for consistent ordering
+    files.sort(key=lambda x: x["path"].name.lower())
+
+    # Generate rename operations
+    rename_operations = []
+    used_ids = set()
+    next_id = 1
+
+    for file_info in files:
+        file_path = file_info["path"]
+        title = file_info["title"]
+
+        # Convert title to kebab-case
+        kebab_title = kebab_case(title)
+
+        # Find next available ID (handle conflicts)
+        while next_id in used_ids:
+            next_id += 1
+
+        # Generate new filename
+        new_filename = f"{next_id}-{kebab_title}.md" if kebab_title else f"{next_id}.md"
+        new_path = category_path / new_filename
+
+        # Check if rename is needed
+        if file_path.name != new_filename:
+            rename_operations.append(
+                {
+                    "old_path": file_path,
+                    "new_path": new_path,
+                    "id": next_id,
+                    "title": title,
+                }
+            )
+
+            # Mark this ID as used
+            used_ids.add(next_id)
+            next_id += 1
+        else:
+            # File already has correct name - mark ID as used but don't rename
+            used_ids.add(next_id)
+            next_id += 1
+
+    # Execute renames if not dry run
+    if not dry_run and rename_operations:
+        # Handle potential conflicts by using temporary names
+        # First, rename all files to temporary names
+        temp_renames = []
+        for op in rename_operations:
+            temp_name = f".tmp_{op['old_path'].name}"
+            temp_path = op["old_path"].parent / temp_name
+            try:
+                op["old_path"].rename(temp_path)
+                temp_renames.append((temp_path, op["new_path"]))
+            except (OSError, PermissionError) as e:
+                # Rollback any temp renames that succeeded
+                for temp_file, _ in temp_renames:
+                    try:
+                        # Try to restore original name
+                        original_name = temp_file.name.replace(".tmp_", "")
+                        temp_file.rename(temp_file.parent / original_name)
+                    except Exception:
+                        pass
+                raise DocumentOperationError(
+                    "order documents",
+                    f"Cannot rename file {op['old_path']}: {e}",
+                )
+
+        # Then rename from temp names to final names
+        for temp_path, final_path in temp_renames:
+            try:
+                temp_path.rename(final_path)
+            except (OSError, PermissionError) as e:
+                # Rollback: try to restore original name
+                try:
+                    original_name = temp_path.name.replace(".tmp_", "")
+                    temp_path.rename(temp_path.parent / original_name)
+                except Exception:
+                    pass
+                raise DocumentOperationError(
+                    "order documents",
+                    f"Cannot rename file to {final_path}: {e}",
+                )
+
+    return rename_operations
