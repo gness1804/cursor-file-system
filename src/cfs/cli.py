@@ -27,6 +27,29 @@ app = typer.Typer(
 console = Console()
 
 
+def get_document_notes(doc: dict, doc_list: list[dict]) -> str:
+    """Generate notes/warning message for a document.
+    
+    Args:
+        doc: Document dictionary with 'conforms_to_naming' and 'title' keys.
+        doc_list: List of all documents in the same category.
+        
+    Returns:
+        Notes string with warning if document doesn't conform to naming convention,
+        empty string otherwise.
+    """
+    if doc.get("conforms_to_naming", True):
+        return ""
+    
+    from cfs.documents import kebab_case
+    
+    suggested_name = kebab_case(doc["title"])
+    # Find next available ID from conforming documents in this category
+    conforming_ids = [d["id"] for d in doc_list if d.get("conforms_to_naming", True)]
+    next_id = max(conforming_ids, default=0) + 1
+    return f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+
+
 def handle_cfs_error(error: CFSError) -> None:
     """Handle CFS-specific errors with user-friendly messages.
 
@@ -334,17 +357,7 @@ def create_category_commands() -> None:
                     modified_str = modified_time.strftime("%Y-%m-%d %H:%M")
 
                     # Add warning for files that don't conform to naming convention
-                    notes = ""
-                    if not doc.get("conforms_to_naming", True):
-                        from cfs.documents import kebab_case
-
-                        suggested_name = kebab_case(doc["title"])
-                        # Find next available ID from conforming documents in this category
-                        conforming_ids = [
-                            d["id"] for d in doc_list if d.get("conforms_to_naming", True)
-                        ]
-                        next_id = max(conforming_ids, default=0) + 1
-                        notes = f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+                    notes = get_document_notes(doc, doc_list)
 
                     table.add_row(
                         str(doc["id"]),
@@ -428,15 +441,7 @@ def view_all(
             modified_str = modified_time.strftime("%Y-%m-%d %H:%M")
 
             # Add warning for files that don't conform to naming convention
-            notes = ""
-            if not doc.get("conforms_to_naming", True):
-                from cfs.documents import kebab_case
-
-                suggested_name = kebab_case(doc["title"])
-                # Find next available ID from conforming documents in this category
-                conforming_ids = [d["id"] for d in doc_list if d.get("conforms_to_naming", True)]
-                next_id = max(conforming_ids, default=0) + 1
-                notes = f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+            notes = get_document_notes(doc, doc_list)
 
             table.add_row(
                 str(doc["id"]),
@@ -476,17 +481,7 @@ def view_all(
                 modified_str = modified_time.strftime("%Y-%m-%d %H:%M")
 
                 # Add warning for files that don't conform to naming convention
-                notes = ""
-                if not doc.get("conforms_to_naming", True):
-                    from cfs.documents import kebab_case
-
-                    suggested_name = kebab_case(doc["title"])
-                    # Find next available ID from conforming documents in this category
-                    conforming_ids = [
-                        d["id"] for d in doc_list if d.get("conforms_to_naming", True)
-                    ]
-                    next_id = max(conforming_ids, default=0) + 1
-                    notes = f"[yellow]⚠️  Rename to: {next_id}-{suggested_name}.md[/yellow]"
+                notes = get_document_notes(doc, doc_list)
 
                 table.add_row(
                     str(doc["id"]),
