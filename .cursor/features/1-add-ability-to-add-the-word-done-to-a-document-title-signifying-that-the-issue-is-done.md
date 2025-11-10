@@ -1,0 +1,2 @@
+There should be a new command like `cfs instructions bugs complete 1` that will complete an instructions document. This should append the word "done" to the end of the document, but before the file extension. They should also make a comment inside of the document saying that it's done. In this way, the CFS engine will know that this issue is done and to use the next one when we eventually implement `cfs instructions next bugs` to work on the next issue.
+
