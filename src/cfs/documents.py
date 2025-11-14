@@ -354,6 +354,68 @@ def list_documents(
     return documents
 
 
+def get_next_document_id(category_path: Path) -> Optional[int]:
+    """Get the ID of the next (first) document in a category.
+
+    Args:
+        category_path: Path to the category directory.
+
+    Returns:
+        Document ID of the first document (lowest ID), or None if no documents exist.
+    """
+    if not category_path.exists():
+        return None
+
+    doc_ids = []
+    for file in category_path.iterdir():
+        if file.is_file() and file.suffix == ".md":
+            parsed_id = parse_document_id(file.name)
+            if parsed_id is not None:
+                doc_ids.append(parsed_id)
+
+    if not doc_ids:
+        return None
+
+    return min(doc_ids)
+
+
+def get_document_title(doc_path: Path) -> str:
+    """Extract title from a document.
+
+    First tries to extract from filename, then falls back to first markdown heading.
+
+    Args:
+        doc_path: Path to the document file.
+
+    Returns:
+        Document title as string.
+    """
+    # Try to extract from filename first
+    parsed_id = parse_document_id(doc_path.name)
+    if parsed_id is not None:
+        stem = doc_path.stem
+        if "-" in stem:
+            title = stem.split("-", 1)[1]
+            # Convert kebab-case back to title case for display
+            title = title.replace("-", " ").title()
+            return title
+
+    # Fall back to first markdown heading in content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+        for line in content.split("\n"):
+            line = line.strip()
+            if line.startswith("# "):
+                return line[2:].strip()
+            elif line.startswith("## "):
+                return line[3:].strip()
+    except Exception:
+        pass
+
+    # Final fallback: use filename without extension
+    return doc_path.stem.replace("-", " ").title()
+
+
 def order_documents(category_path: Path, dry_run: bool = True) -> List[Dict[str, Any]]:
     """Order documents in a category by renaming them to follow CFS naming convention.
 

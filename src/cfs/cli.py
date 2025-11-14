@@ -494,6 +494,141 @@ def view_all(
             console.print(table)
 
 
+@app.command("exec")
+def exec_document(
+    category: str = typer.Argument(..., help="Category name"),
+    doc_id: Optional[str] = typer.Argument(
+        None,
+        help="Document ID (numeric or 'next') - if not provided and --next not used, will prompt",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation prompt",
+    ),
+    next_flag: bool = typer.Option(
+        False,
+        "--next",
+        help="Execute the next (first) document in the category",
+    ),
+) -> None:
+    """Execute instructions from a document by outputting them as custom instructions text.
+
+    This command reads a document and outputs its content as custom instructions that can be
+    given to a Cursor agent. In future versions, this may integrate directly with Cursor agents.
+
+    Examples:
+        cfs exec bugs 1          # Execute document with ID 1 in bugs category
+        cfs exec bugs next       # Execute the next document in bugs category
+        cfs exec bugs --next     # Same as above, using flag
+    """
+    from cfs.documents import (
+        parse_document_id_from_string,
+        get_next_document_id,
+        get_document_title,
+        find_document_by_id,
+    )
+
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Validate category
+    try:
+        category_path = core.get_category_path(cfs_root, category)
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Determine which document to execute
+    target_doc_id: Optional[int] = None
+
+    if next_flag or (doc_id and doc_id.lower() == "next"):
+        # Get next document
+        target_doc_id = get_next_document_id(category_path)
+        if target_doc_id is None:
+            console.print(
+                f"[yellow]No documents found in {category} category[/yellow]",
+            )
+            raise typer.Abort()
+    elif doc_id:
+        # Parse provided document ID
+        try:
+            target_doc_id = parse_document_id_from_string(doc_id)
+        except InvalidDocumentIDError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+    else:
+        # No doc_id provided and --next not used - prompt user
+        console.print(
+            "[yellow]No document ID provided. Use a number, 'next', or --next flag[/yellow]"
+        )
+        raise typer.Abort()
+
+    # Find document
+    doc_path = find_document_by_id(category_path, target_doc_id)
+    if doc_path is None or not doc_path.exists():
+        try:
+            raise DocumentNotFoundError(target_doc_id, category)
+        except DocumentNotFoundError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+
+    # Get document title and content
+    try:
+        title = get_document_title(doc_path)
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        console.print(f"[red]Error reading document: {e}[/red]")
+        raise typer.Abort()
+
+    # Show confirmation (unless --force)
+    if not force:
+        console.print(f"\n[bold]Document:[/bold] {title}")
+        console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
+        console.print()
+        if not typer.confirm(
+            "Execute this document? (This will output the instructions text)",
+            default=False,
+        ):
+            console.print("[yellow]Execution cancelled[/yellow]")
+            raise typer.Abort()
+
+    # Output the document content as custom instructions
+    console.print()
+    console.print("[bold cyan]--- Custom Instructions ---[/bold cyan]")
+    console.print()
+    console.print(content)
+    console.print()
+    console.print("[bold cyan]--- End Custom Instructions ---[/bold cyan]")
+    console.print()
+
+    # Copy to clipboard
+    try:
+        import pyperclip
+
+        pyperclip.copy(content)
+        console.print("[green]✓ Instructions copied to clipboard[/green]")
+    except ImportError:
+        console.print(
+            "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+        )
+    except Exception as e:
+        console.print(
+            f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+        )
+
+
 @instructions_app.command("order")
 def order_documents_command(
     category: str = typer.Argument(..., help="Category name"),
