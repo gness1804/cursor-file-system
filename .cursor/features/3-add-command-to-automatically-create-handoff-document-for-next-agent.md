@@ -1,0 +1,2 @@
+There should be a command like `cfs instructions handoff` that instructs the current agent to create a handoff document of what they have been working on that can then be picked up by a new agent.This can be useful in cases where the context window is almost full. The handoff document will be saved in the progress folder. You could even have a command like `cfs instructions handoff pickup` that you could tell the new agent that would let it know to start with the First incomplete handoff document.
+
