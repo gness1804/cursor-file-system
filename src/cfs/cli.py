@@ -315,9 +315,19 @@ def create_category_commands() -> None:
                     raise typer.Abort()
 
             @category_app.command("view")
-            def view_in_category() -> None:
-                """View all documents in this category."""
+            def view_in_category(
+                doc_id: Optional[str] = typer.Argument(
+                    None,
+                    help="Optional document ID to view full content",
+                ),
+            ) -> None:
+                """View all documents in this category, or view a specific document by ID."""
                 from cfs import documents
+                from cfs.documents import (
+                    parse_document_id_from_string,
+                    get_document_title,
+                    find_document_by_id,
+                )
                 from datetime import datetime
 
                 try:
@@ -329,12 +339,50 @@ def create_category_commands() -> None:
 
                 # Validate category (get_category_path will raise if invalid)
                 try:
-                    core.get_category_path(cfs_root, cat)
+                    category_path = core.get_category_path(cfs_root, cat)
                 except InvalidCategoryError as e:
                     handle_cfs_error(e)
                     raise typer.Abort()
 
-                # List documents in this category
+                # If doc_id is provided, show document content
+                if doc_id:
+                    # Parse document ID
+                    try:
+                        parsed_id = parse_document_id_from_string(doc_id)
+                    except InvalidDocumentIDError as e:
+                        handle_cfs_error(e)
+                        raise typer.Abort()
+
+                    # Find document
+                    doc_path = find_document_by_id(category_path, parsed_id)
+                    if doc_path is None or not doc_path.exists():
+                        try:
+                            raise DocumentNotFoundError(parsed_id, cat)
+                        except DocumentNotFoundError as e:
+                            handle_cfs_error(e)
+                            raise typer.Abort()
+
+                    # Get document content
+                    try:
+                        title = get_document_title(doc_path)
+                        content = doc_path.read_text(encoding="utf-8")
+                    except (OSError, IOError) as e:
+                        console.print(f"[red]Error reading document: {e}[/red]")
+                        raise typer.Abort()
+
+                    # Display document content
+                    console.print()
+                    console.print(f"[bold]Document:[/bold] {title}")
+                    console.print(f"[dim]Category: {cat}, ID: {parsed_id}[/dim]")
+                    console.print()
+                    console.print("[bold cyan]--- Document Content ---[/bold cyan]")
+                    console.print()
+                    console.print(content)
+                    console.print()
+                    console.print("[bold cyan]--- End Document Content ---[/bold cyan]")
+                    return
+
+                # No doc_id provided - show table of all documents
                 docs_dict = documents.list_documents(cfs_root, cat)
                 doc_list = docs_dict.get(cat, [])
 
