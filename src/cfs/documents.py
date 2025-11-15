@@ -547,3 +547,76 @@ def order_documents(category_path: Path, dry_run: bool = True) -> List[Dict[str,
                 )
 
     return rename_operations
+
+
+def complete_document(category_path: Path, doc_id: int) -> Path:
+    """Mark a document as complete by appending '-done' to filename and adding a comment.
+
+    Args:
+        category_path: Path to the category directory.
+        doc_id: Document ID to complete.
+
+    Returns:
+        Path to the completed document file.
+
+    Raises:
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If file cannot be read, written, or renamed.
+    """
+    # Find document
+    doc_path = find_document_by_id(category_path, doc_id)
+    if doc_path is None or not doc_path.exists():
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
+
+    # Check if already completed
+    if "-done" in doc_path.stem:
+        raise DocumentOperationError(
+            "complete document",
+            f"Document {doc_id} is already marked as done",
+        )
+
+    # Read current content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        raise DocumentOperationError("read document", str(e))
+
+    # Append completion comment if not already present
+    completion_comment = "<!-- This issue is done -->"
+    # Check if comment already exists (with or without surrounding whitespace)
+    if completion_comment not in content:
+        # Ensure content ends with at least one newline, then add comment
+        content = content.rstrip() + "\n\n" + completion_comment + "\n"
+
+    # Generate new filename with '-done' before extension
+    stem = doc_path.stem
+    new_filename = f"{stem}-done.md"
+    new_path = category_path / new_filename
+
+    # Check if new filename already exists (shouldn't happen, but handle it)
+    if new_path.exists() and new_path != doc_path:
+        raise DocumentOperationError(
+            "complete document",
+            f"Target filename already exists: {new_path}",
+        )
+
+    # Write content to new file
+    try:
+        new_path.write_text(content, encoding="utf-8")
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("write document", str(e))
+
+    # Delete old file if it's different from new file
+    if doc_path != new_path:
+        try:
+            doc_path.unlink()
+        except (OSError, PermissionError) as e:
+            # If deletion fails, try to clean up the new file
+            try:
+                new_path.unlink()
+            except Exception:
+                pass
+            raise DocumentOperationError("delete old document", str(e))
+
+    return new_path

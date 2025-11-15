@@ -418,6 +418,67 @@ def create_category_commands() -> None:
                 console.print()
                 console.print(table)
 
+            @category_app.command("complete")
+            def complete_in_category(
+                doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+            ) -> None:
+                """Mark a document as complete by appending '-done' to filename and adding a comment."""
+                from cfs import documents
+                from cfs.documents import parse_document_id_from_string
+
+                try:
+                    # Find CFS root
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                try:
+                    # Get category path
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                # Parse ID (handle both numeric ID and filename)
+                try:
+                    parsed_id = parse_document_id_from_string(doc_id)
+                except InvalidDocumentIDError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                # Find document to show preview
+                doc_path = documents.find_document_by_id(category_path, parsed_id)
+                if doc_path is None or not doc_path.exists():
+                    try:
+                        raise DocumentNotFoundError(parsed_id, cat)
+                    except DocumentNotFoundError as e:
+                        handle_cfs_error(e)
+                        raise typer.Abort()
+
+                # Show document preview (first few lines)
+                try:
+                    content = doc_path.read_text(encoding="utf-8")
+                    lines = content.split("\n")[:5]
+                    preview = "\n".join(lines)
+                    if len(content.split("\n")) > 5:
+                        preview += "\n..."
+
+                    console.print("\n[yellow]Document preview:[/yellow]")
+                    console.print(f"[dim]{preview}[/dim]\n")
+                except Exception:
+                    pass
+
+                # Complete document
+                try:
+                    new_path = documents.complete_document(category_path, parsed_id)
+                    console.print(
+                        f"[green]✓ Completed document: {new_path}[/green]",
+                    )
+                except (DocumentNotFoundError, DocumentOperationError) as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
         # Create all commands for this category
         make_category_commands(category)
 
