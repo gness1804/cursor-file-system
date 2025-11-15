@@ -550,7 +550,7 @@ def order_documents(category_path: Path, dry_run: bool = True) -> List[Dict[str,
 
 
 def complete_document(category_path: Path, doc_id: int) -> Path:
-    """Mark a document as complete by appending '-done' to filename and adding a comment.
+    """Mark a document as complete by appending '-DONE' to filename and adding a comment.
 
     Args:
         category_path: Path to the category directory.
@@ -569,8 +569,8 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
         category_name = category_path.name if category_path.exists() else "unknown"
         raise DocumentNotFoundError(doc_id, category_name)
 
-    # Check if already completed
-    if "-done" in doc_path.stem:
+    # Check if already completed (using case-sensitive check for "-DONE")
+    if "-DONE" in doc_path.stem:
         raise DocumentOperationError(
             "complete document",
             f"Document {doc_id} is already marked as done",
@@ -583,15 +583,15 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
         raise DocumentOperationError("read document", str(e))
 
     # Append completion comment if not already present
-    completion_comment = "<!-- This issue is done -->"
+    completion_comment = "<!-- DONE -->"
     # Check if comment already exists (with or without surrounding whitespace)
     if completion_comment not in content:
         # Ensure content ends with at least one newline, then add comment
         content = content.rstrip() + "\n\n" + completion_comment + "\n"
 
-    # Generate new filename with '-done' before extension
+    # Generate new filename with '-DONE' before extension
     stem = doc_path.stem
-    new_filename = f"{stem}-done.md"
+    new_filename = f"{stem}-DONE.md"
     new_path = category_path / new_filename
 
     # Check if new filename already exists (shouldn't happen, but handle it)
