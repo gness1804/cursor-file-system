@@ -152,13 +152,44 @@ def create_category_commands() -> None:
                         console.print("[red]Error: Title cannot be empty[/red]")
                         raise typer.Abort()
 
+                # Get repository root (parent of .cursor directory)
+                repo_root = cfs_root.parent
+
+                # Generate initial structured content
+                from cfs.documents import kebab_case, title_case
+
+                kebab_title = kebab_case(title)
+                title_case_title = title_case(kebab_title)
+
+                # Format the repository path for display (use ~ for home directory if applicable)
+                try:
+                    repo_path_str = str(repo_root.resolve())
+                    home_dir = Path.home()
+                    if repo_path_str.startswith(str(home_dir)):
+                        repo_path_str = "~" + repo_path_str[len(str(home_dir)) :]
+                except Exception:
+                    repo_path_str = str(repo_root)
+
+                # Build initial document structure
+                initial_content_lines = [
+                    f"# {title_case_title}",
+                    "",
+                    "## Working directory",
+                    "",
+                    f"`{repo_path_str}`",
+                    "",
+                    "## Contents",
+                    "",
+                ]
+                initial_content = "\n".join(initial_content_lines)
+
                 # Get content - prompt if edit flag is set, or ask user if not set
-                content = ""
+                content = initial_content
                 if edit:
                     from cfs import editor
 
                     console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
-                    content = editor.edit_content()
+                    content = editor.edit_content(initial_content)
                 else:
                     # Prompt user: edit now or create empty?
                     if typer.confirm(
@@ -168,11 +199,11 @@ def create_category_commands() -> None:
                         from cfs import editor
 
                         console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
-                        content = editor.edit_content()
+                        content = editor.edit_content(initial_content)
 
-                # Create document
+                # Create document with the full content (user may have edited the structure)
                 try:
-                    doc_path = documents.create_document(category_path, title, content)
+                    doc_path = documents.create_document(category_path, title, content, repo_root)
                     console.print(
                         f"[green]✓ Created document: {doc_path}[/green]",
                     )

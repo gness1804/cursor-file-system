@@ -148,13 +148,30 @@ def kebab_case(title: str) -> str:
     return title.strip("-")
 
 
-def create_document(category_path: Path, title: str, content: str = "") -> Path:
+def title_case(kebab_title: str) -> str:
+    """Convert a kebab-case string to title case.
+
+    Args:
+        kebab_title: Kebab-case string (e.g., "fix-annoying-lag").
+
+    Returns:
+        Title case string (e.g., "Fix Annoying Lag").
+    """
+    # Split by hyphens and capitalize each word
+    words = kebab_title.split("-")
+    return " ".join(word.capitalize() for word in words if word)
+
+
+def create_document(
+    category_path: Path, title: str, content: str = "", repo_root: Optional[Path] = None
+) -> Path:
     """Create a new document with ID prefix.
 
     Args:
         category_path: Path to the category directory.
         title: Document title (will be converted to kebab-case).
-        content: Initial document content. Defaults to empty string.
+        content: Full document content (including structure). If empty, will generate basic structure.
+        repo_root: Path to the repository root (parent of .cursor). Used only if content is empty.
 
     Returns:
         Path to the created document file.
@@ -193,9 +210,44 @@ def create_document(category_path: Path, title: str, content: str = "") -> Path:
             f"File already exists: {file_path}. This may indicate a duplicate ID issue.",
         )
 
+    # If content is provided, use it directly (assumes it includes full structure)
+    # Otherwise, generate basic structure (for backward compatibility)
+    if content:
+        document_content = content
+    else:
+        # Generate document structure (backward compatibility)
+        title_case_title = title_case(kebab_title)
+
+        # Get repository root path
+        if repo_root is None:
+            # Infer from category_path: category_path -> .cursor -> repo_root
+            repo_root = category_path.parent.parent
+
+        # Format the repository path for display (use ~ for home directory if applicable)
+        try:
+            repo_path_str = str(repo_root.resolve())
+            home_dir = Path.home()
+            if repo_path_str.startswith(str(home_dir)):
+                repo_path_str = "~" + repo_path_str[len(str(home_dir)) :]
+        except Exception:
+            repo_path_str = str(repo_root)
+
+        # Build document content with structure
+        document_lines = [
+            f"# {title_case_title}",
+            "",
+            "## Working directory",
+            "",
+            f"`{repo_path_str}`",
+            "",
+            "## Contents",
+            "",
+        ]
+        document_content = "\n".join(document_lines)
+
     # Write content to file
     try:
-        file_path.write_text(content, encoding="utf-8")
+        file_path.write_text(document_content, encoding="utf-8")
         return file_path
     except (OSError, IOError, PermissionError) as e:
         raise DocumentOperationError("create document", str(e))
