@@ -5,3 +5,5 @@ Example - you run the command `cfs exec bugs 1` and the agent executes the instr
 There should be a confirmation required to execute this command. Similar to the order subcommand, running `cfs-exec` should prompt the user to confirm that they really want to run this particular instruction document in the agent. It should show the title of the file. There should also be a `--force` option to bypass this behavior.
 
 There should also be a `--next` option, which executes the next issue in the particular directory. For instance: cfs exec bugs next.
+
+<!-- DONE -->

@@ -251,3 +251,4 @@ Build a Python CLI tool (`cfs`) to manage Cursor File Structure (CFS) documents 
 
 **The MVP is complete and ready for use or further development.**
 
+<!-- DONE -->
