@@ -602,7 +602,7 @@ def order_documents(category_path: Path, dry_run: bool = True) -> List[Dict[str,
 
 
 def complete_document(category_path: Path, doc_id: int) -> Path:
-    """Mark a document as complete by appending '-DONE' to filename and adding a comment.
+    """Mark a document as complete by inserting 'DONE' after the ID in filename and adding a comment.
 
     Args:
         category_path: Path to the category directory.
@@ -621,12 +621,29 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
         category_name = category_path.name if category_path.exists() else "unknown"
         raise DocumentNotFoundError(doc_id, category_name)
 
-    # Check if already completed (using case-sensitive check for "-DONE")
-    if "-DONE" in doc_path.stem:
+    stem = doc_path.stem
+
+    # Check if already completed (check for pattern: {id}-DONE-)
+    if stem.startswith(f"{doc_id}-DONE-"):
         raise DocumentOperationError(
             "complete document",
             f"Document {doc_id} is already marked as done",
         )
+
+    # Parse the filename to extract the title part after the ID
+    # Format: {id}-{title} or {id}-DONE-{title}
+    if stem.startswith(f"{doc_id}-"):
+        # Extract title part (everything after "{id}-")
+        title_part = stem[len(f"{doc_id}-") :]
+        # If it already starts with "DONE-", it's already completed
+        if title_part.startswith("DONE-"):
+            raise DocumentOperationError(
+                "complete document",
+                f"Document {doc_id} is already marked as done",
+            )
+    else:
+        # Filename doesn't match expected pattern, use the whole stem as title
+        title_part = stem
 
     # Read current content
     try:
@@ -641,9 +658,8 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
         # Ensure content ends with at least one newline, then add comment
         content = content.rstrip() + "\n\n" + completion_comment + "\n"
 
-    # Generate new filename with '-DONE' before extension
-    stem = doc_path.stem
-    new_filename = f"{stem}-DONE.md"
+    # Generate new filename with 'DONE' after the ID: {id}-DONE-{title}.md
+    new_filename = f"{doc_id}-DONE-{title_part}.md"
     new_path = category_path / new_filename
 
     # Check if new filename already exists (shouldn't happen, but handle it)
