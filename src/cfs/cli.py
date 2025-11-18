@@ -91,10 +91,15 @@ rules_app = typer.Typer(
     name="rules",
     help="Manage Cursor rules documents",
 )
+handoff_app = typer.Typer(
+    name="handoff",
+    help="Create and manage handoff documents for agent transitions",
+)
 
 # Register subcommand groups
 app.add_typer(instructions_app, name="instructions")
 app.add_typer(rules_app, name="rules")
+instructions_app.add_typer(handoff_app, name="handoff")
 
 
 # Dynamically create category subcommands for instructions
@@ -873,6 +878,228 @@ def next_document(
         )
         console.print(
             "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+        )
+
+
+@handoff_app.command()
+def create_handoff() -> None:
+    """Generate instructions for creating a handoff document.
+
+    This command prints instructions that you can paste into a Cursor agent
+    to create a detailed handoff document. The instructions are automatically
+    copied to your clipboard.
+
+    The handoff document will be saved in the progress folder and can be
+    picked up by a new agent using 'cfs instructions handoff pickup'.
+    """
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Get repository root (parent of .cursor directory)
+    repo_root = cfs_root.parent
+
+    # Format the repository path for display (use ~ for home directory if applicable)
+    try:
+        repo_path_str = str(repo_root.resolve())
+        home_dir = Path.home()
+        if repo_path_str.startswith(str(home_dir)):
+            repo_path_str = "~" + repo_path_str[len(str(home_dir)) :]
+    except Exception:
+        repo_path_str = str(repo_root)
+
+    # Generate handoff instructions
+    handoff_instructions = f"""# Create Handoff Document
+
+Please create a comprehensive handoff document that summarizes the current state of the work I've been doing. This document will help a new agent (or me later) pick up where we left off.
+
+## Working directory
+
+`{repo_path_str}`
+
+## Instructions
+
+Create a detailed handoff document using the CFS CLI. Run this command to create the document with proper naming:
+
+```bash
+cfs instructions progress create --title "handoff-{{descriptive-title}}"
+```
+
+For example:
+```bash
+cfs instructions progress create --title "handoff-feature-implementation-phase-2"
+```
+
+This will create a document like `3-handoff-feature-implementation-phase-2.md` in the `.cursor/progress/` folder with the correct ID.
+
+## Document Content
+
+The handoff document should include:
+
+1. **Project Overview**: Brief description of what we're working on
+2. **Current State**: What has been completed so far
+3. **In Progress**: What is currently being worked on
+4. **Next Steps**: What needs to be done next
+5. **Key Implementation Details**: Important technical details, patterns, or decisions
+6. **Project Structure**: Overview of the codebase structure
+7. **Known Issues**: Any problems or blockers encountered
+8. **Questions for Next Agent**: Any questions or decisions that need to be made
+9. **Resources**: Links to relevant documentation, files, or resources
+
+## Document Format
+
+- Use Markdown format
+- Be comprehensive but organized
+- Include code examples or snippets where relevant
+- Document any important context or decisions
+- Use clear headings and sections
+
+## After Creation
+
+Once created, a new agent can pick up this handoff document by running:
+```bash
+cfs instructions handoff pickup
+```
+"""
+
+    # Display instructions
+    console.print()
+    console.print("[bold cyan]--- Handoff Instructions ---[/bold cyan]")
+    console.print()
+    console.print(handoff_instructions)
+    console.print()
+    console.print("[bold cyan]--- End Handoff Instructions ---[/bold cyan]")
+    console.print()
+
+    # Copy to clipboard
+    try:
+        import pyperclip
+
+        pyperclip.copy(handoff_instructions)
+        console.print("[green]✓ Instructions copied to clipboard[/green]")
+        console.print(
+            "[dim]Paste these instructions into your Cursor agent to create a handoff document.[/dim]",
+        )
+    except ImportError:
+        console.print(
+            "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the instructions above and paste them into your Cursor agent.[/dim]",
+        )
+    except Exception as e:
+        console.print(
+            f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the instructions above and paste them into your Cursor agent.[/dim]",
+        )
+
+
+@handoff_app.command("pickup")
+def pickup_handoff() -> None:
+    """Pick up the first incomplete handoff document from the progress folder.
+
+    This command finds the first unresolved handoff document (not marked as DONE)
+    in the progress folder, shows its title, and asks if you want to work on it.
+    If yes, it displays the full content and copies it to the clipboard.
+
+    Examples:
+        cfs instructions handoff pickup    # Pick up the next handoff document
+    """
+    from cfs.documents import (
+        get_next_unresolved_document_id,
+        get_document_title,
+        find_document_by_id,
+    )
+
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Get progress category path
+    try:
+        category_path = core.get_category_path(cfs_root, "progress")
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Find next unresolved handoff document
+    target_doc_id = get_next_unresolved_document_id(category_path)
+    if target_doc_id is None:
+        console.print(
+            "[yellow]No incomplete handoff documents found in the progress folder. "
+            "All handoff documents have been completed.[/yellow]",
+        )
+        raise typer.Abort()
+
+    # Find document
+    doc_path = find_document_by_id(category_path, target_doc_id)
+    if doc_path is None or not doc_path.exists():
+        try:
+            raise DocumentNotFoundError(target_doc_id, "progress")
+        except DocumentNotFoundError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+
+    # Get document title
+    try:
+        title = get_document_title(doc_path)
+    except Exception as e:
+        console.print(f"[red]Error reading document title: {e}[/red]")
+        raise typer.Abort()
+
+    # Show title and ask for confirmation
+    console.print()
+    console.print(f"[bold]Next handoff document:[/bold] {title}")
+    console.print(f"[dim]Category: progress, ID: {target_doc_id}[/dim]")
+    console.print()
+
+    if not typer.confirm("Would you like to pick up this handoff document?", default=True):
+        console.print("[yellow]Cancelled[/yellow]")
+        raise typer.Abort()
+
+    # Get document content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        console.print(f"[red]Error reading document: {e}[/red]")
+        raise typer.Abort()
+
+    # Display full document content
+    console.print()
+    console.print("[bold cyan]--- Handoff Document Content ---[/bold cyan]")
+    console.print()
+    console.print(content)
+    console.print()
+    console.print("[bold cyan]--- End Handoff Document Content ---[/bold cyan]")
+    console.print()
+
+    # Copy to clipboard
+    try:
+        import pyperclip
+
+        pyperclip.copy(content)
+        console.print("[green]✓ Handoff document copied to clipboard[/green]")
+    except ImportError:
+        console.print(
+            "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the handoff document above and provide it to your Cursor agent.[/dim]",
+        )
+    except Exception as e:
+        console.print(
+            f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the handoff document above and provide it to your Cursor agent.[/dim]",
         )
 
 
