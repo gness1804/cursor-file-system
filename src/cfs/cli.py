@@ -94,6 +94,7 @@ rules_app = typer.Typer(
 handoff_app = typer.Typer(
     name="handoff",
     help="Create and manage handoff documents for agent transitions",
+    invoke_without_command=True,
 )
 
 # Register subcommand groups
@@ -881,7 +882,14 @@ def next_document(
         )
 
 
-@handoff_app.command()
+@handoff_app.callback(invoke_without_command=True)
+def handoff_callback(ctx: typer.Context) -> None:
+    """Generate instructions for creating a handoff document."""
+    if ctx.invoked_subcommand is None:
+        create_handoff()
+
+
+@handoff_app.command("create-handoff")
 def create_handoff() -> None:
     """Generate instructions for creating a handoff document.
 

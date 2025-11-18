@@ -269,3 +269,4 @@ For questions about the CFS structure itself, see: `~/cursor-commands/cursor_sem
 
 **Ready for**: Testing completion, documentation polish, and packaging verification.
 
+<!-- DONE -->

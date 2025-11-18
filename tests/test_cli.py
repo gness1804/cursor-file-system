@@ -292,3 +292,147 @@ class TestRulesCreateCommand:
             assert result.exit_code == 0
             rules_file = cursor_dir / "rules" / "test-rules.mdc"
             assert rules_file.exists()
+
+
+class TestNextCommand:
+    """Tests for `cfs instructions next <category>` command."""
+
+    def test_next_document_success(self, runner, temp_cfs):
+        """Test successfully finding next unresolved document."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create unresolved documents
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.write_text("# Test Bug\n\nContent here.")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "next", "bugs"],
+                input="n\n",  # Decline to work on it
+            )
+
+            assert result.exit_code != 0  # Should abort after declining
+            assert "Next issue in bugs" in result.stdout
+            assert "Test Bug" in result.stdout
+
+    def test_next_document_all_completed(self, runner, temp_cfs):
+        """Test when all documents are completed."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create only completed documents
+        (cursor_dir / "bugs" / "1-DONE-completed.md").write_text("content")
+        (cursor_dir / "bugs" / "2-DONE-another.md").write_text("content")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "next", "bugs"])
+
+            assert result.exit_code != 0
+            assert "All of the issues have been completed" in result.stdout
+
+    def test_next_document_invalid_category(self, runner, temp_cfs):
+        """Test with invalid category."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "next", "invalid"])
+
+            assert result.exit_code != 0
+
+    def test_next_document_no_cfs(self, runner, tmp_path):
+        """Test that missing CFS structure raises error."""
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "next", "bugs"])
+
+            assert result.exit_code != 0
+            assert "CFS structure not found" in result.stdout
+
+
+class TestHandoffCommand:
+    """Tests for `cfs instructions handoff` command."""
+
+    def test_handoff_create_success(self, runner, temp_cfs):
+        """Test successfully generating handoff instructions."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff"])
+
+            assert result.exit_code == 0
+            assert "Handoff Instructions" in result.stdout
+            assert "Create Handoff Document" in result.stdout
+
+    def test_handoff_create_no_cfs(self, runner, tmp_path):
+        """Test that missing CFS structure raises error."""
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff"])
+
+            assert result.exit_code != 0
+            assert "CFS structure not found" in result.stdout
+
+
+class TestHandoffPickupCommand:
+    """Tests for `cfs instructions handoff pickup` command."""
+
+    def test_handoff_pickup_success(self, runner, temp_cfs):
+        """Test successfully picking up handoff document."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create progress category if not exists
+        progress_dir = cursor_dir / "progress"
+        if not progress_dir.exists():
+            progress_dir.mkdir()
+
+        # Create unresolved handoff document
+        handoff_file = progress_dir / "1-handoff-test.md"
+        handoff_file.write_text("# Handoff Test\n\nContent here.")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "handoff", "pickup"],
+                input="n\n",  # Decline to pick up
+            )
+
+            assert result.exit_code != 0  # Should abort after declining
+            assert "Next handoff document" in result.stdout
+            assert "Handoff Test" in result.stdout
+
+    def test_handoff_pickup_all_completed(self, runner, temp_cfs):
+        """Test when all handoff documents are completed."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create progress category
+        progress_dir = cursor_dir / "progress"
+        progress_dir.mkdir()
+
+        # Create only completed handoff documents
+        (progress_dir / "1-DONE-handoff-completed.md").write_text("content")
+        (progress_dir / "2-DONE-another-handoff.md").write_text("content")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff", "pickup"])
+
+            assert result.exit_code != 0
+            assert "No incomplete handoff documents found" in result.stdout
+
+    def test_handoff_pickup_no_progress_category(self, runner, temp_cfs):
+        """Test when progress category doesn't exist."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Don't create progress category
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff", "pickup"])
+
+            # Should either create the category or show an error
+            # The behavior depends on get_category_path implementation
+            assert result.exit_code != 0
+
+    def test_handoff_pickup_no_cfs(self, runner, tmp_path):
+        """Test that missing CFS structure raises error."""
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff", "pickup"])
+
+            assert result.exit_code != 0
+            assert "CFS structure not found" in result.stdout

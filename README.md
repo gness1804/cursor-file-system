@@ -157,6 +157,99 @@ Are you sure you want to delete document 1? [y/N]: y
 ✓ Deleted document: .cursor/bugs/1-fix-login-bug.md
 ```
 
+### Working on Next Issue
+
+The `next` command automatically finds and works on the first unresolved issue in a category:
+
+```bash
+# Find and work on the next unresolved bug
+cfs instructions next bugs
+
+# Find and work on the next unresolved feature
+cfs instructions next features
+```
+
+**How it works:**
+- Finds the first document in the category that isn't marked as DONE
+- Shows the document title and asks for confirmation
+- If confirmed, displays the full document content and copies it to your clipboard
+- Perfect for working through issues systematically
+
+**Example:**
+```bash
+$ cfs instructions next bugs
+
+Next issue in bugs: Fix login bug
+Category: bugs, ID: 1
+
+Would you like to work on this issue? [Y/n]: y
+
+--- Document Content ---
+# Fix login bug
+The login functionality is broken...
+--- End Document Content ---
+
+✓ Instructions copied to clipboard
+```
+
+### Handoff Documents
+
+Handoff documents help you transition work between agents or sessions. The CLI provides commands to create and pick up handoff documents.
+
+#### Creating Handoff Instructions
+
+Generate instructions for creating a handoff document:
+
+```bash
+cfs instructions handoff
+```
+
+This command:
+- Generates comprehensive instructions for creating a handoff document
+- Automatically copies the instructions to your clipboard
+- Provides a template for documenting current state, next steps, and key details
+
+**Example:**
+```bash
+$ cfs instructions handoff
+
+--- Handoff Instructions ---
+# Create Handoff Document
+...
+✓ Instructions copied to clipboard
+```
+
+#### Picking Up Handoff Documents
+
+Pick up the first incomplete handoff document from the progress folder:
+
+```bash
+cfs instructions handoff pickup
+```
+
+**How it works:**
+- Finds the first unresolved handoff document in the `.cursor/progress/` folder
+- Shows the document title and asks for confirmation
+- If confirmed, displays the full handoff content and copies it to your clipboard
+- Perfect for resuming work from a previous session
+
+**Example:**
+```bash
+$ cfs instructions handoff pickup
+
+Next handoff document: handoff-feature-implementation-phase-2
+Category: progress, ID: 3
+
+Would you like to pick up this handoff document? [Y/n]: y
+
+--- Handoff Document Content ---
+# Handoff: Feature Implementation Phase 2
+...
+--- End Handoff Document Content ---
+
+✓ Handoff document copied to clipboard
+```
+
 ### Creating Rules Documents
 
 Create Cursor rules documents (`.mdc` files) with automatic boilerplate:
@@ -203,6 +296,11 @@ The generated file includes:
 - `cfs instructions <category> delete <id> [--force]` - Delete document
 - `cfs instructions <category> view` - View documents in category
 - `cfs instructions view [category]` - View all documents or filter by category
+- `cfs instructions <category> complete <id>` - Mark document as done
+- `cfs instructions <category> order` - Order documents by naming convention
+- `cfs instructions next <category>` - Find and work on the next unresolved issue
+- `cfs instructions handoff` - Generate instructions for creating a handoff document
+- `cfs instructions handoff pickup` - Pick up the first incomplete handoff document
 
 ### Rules Commands
 
@@ -296,6 +394,38 @@ cfs instructions features view
 
 # Edit as you work
 cfs instructions features edit 1
+
+# Mark as complete when done
+cfs instructions features complete 1
+```
+
+### Example Workflow: Working Through Issues
+
+```bash
+# Work on the next unresolved bug
+cfs instructions next bugs
+
+# After fixing, mark it as complete
+cfs instructions bugs complete 1
+
+# Continue with the next issue
+cfs instructions next bugs
+```
+
+### Example Workflow: Agent Handoff
+
+```bash
+# Generate handoff instructions
+cfs instructions handoff
+
+# Paste the instructions into Cursor agent to create handoff document
+# The agent will create: .cursor/progress/3-handoff-feature-implementation-phase-2.md
+
+# Later, new agent picks up the handoff
+cfs instructions handoff pickup
+
+# After completing the handoff work, mark it as done
+cfs instructions progress complete 3
 ```
 
 ### Example: Setting Up Project Rules

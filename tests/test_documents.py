@@ -9,6 +9,7 @@ from cfs.documents import (
     find_document_by_id,
     get_document,
     get_next_id,
+    get_next_unresolved_document_id,
     kebab_case,
     list_documents,
     parse_document_id,
@@ -349,3 +350,91 @@ class TestListDocuments:
         result = list_documents(cursor_dir, category="bugs")
         assert len(result["bugs"]) == 1
         assert result["bugs"][0]["id"] == 1
+
+
+class TestGetNextUnresolvedDocumentID:
+    """Tests for get_next_unresolved_document_id function."""
+
+    def test_get_next_unresolved_empty_category(self, tmp_path):
+        """Test getting next unresolved when category is empty."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result is None
+
+    def test_get_next_unresolved_nonexistent_category(self, tmp_path):
+        """Test getting next unresolved when category doesn't exist."""
+        category_path = tmp_path / "bugs"
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result is None
+
+    def test_get_next_unresolved_with_unresolved_documents(self, tmp_path):
+        """Test getting next unresolved with unresolved documents."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        # Create some unresolved documents
+        (category_path / "1-first.md").write_text("content")
+        (category_path / "3-third.md").write_text("content")
+        (category_path / "5-fifth.md").write_text("content")
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result == 1  # Should return the lowest ID
+
+    def test_get_next_unresolved_ignores_completed_documents(self, tmp_path):
+        """Test that completed documents (with DONE in filename) are ignored."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        # Create completed documents
+        (category_path / "1-DONE-first.md").write_text("content")
+        (category_path / "2-DONE-second.md").write_text("content")
+
+        # Create unresolved documents
+        (category_path / "3-third.md").write_text("content")
+        (category_path / "5-fifth.md").write_text("content")
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result == 3  # Should return the lowest unresolved ID
+
+    def test_get_next_unresolved_all_completed(self, tmp_path):
+        """Test that None is returned when all documents are completed."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        # Create only completed documents
+        (category_path / "1-DONE-first.md").write_text("content")
+        (category_path / "2-DONE-second.md").write_text("content")
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result is None
+
+    def test_get_next_unresolved_mixed_completed_and_unresolved(self, tmp_path):
+        """Test with mix of completed and unresolved documents."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        # Create completed documents
+        (category_path / "1-DONE-first.md").write_text("content")
+        (category_path / "3-DONE-third.md").write_text("content")
+
+        # Create unresolved documents
+        (category_path / "2-second.md").write_text("content")
+        (category_path / "4-fourth.md").write_text("content")
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result == 2  # Should return the lowest unresolved ID
+
+    def test_get_next_unresolved_ignores_non_md_files(self, tmp_path):
+        """Test that non-.md files are ignored."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        (category_path / "1-first.md").write_text("content")
+        (category_path / "other.txt").write_text("content")
+        (category_path / "README.md").write_text("content")  # No ID prefix
+
+        result = get_next_unresolved_document_id(category_path)
+        assert result == 1
