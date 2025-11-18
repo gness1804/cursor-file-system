@@ -769,6 +769,113 @@ def exec_document(
         )
 
 
+@instructions_app.command("next")
+def next_document(
+    category: str = typer.Argument(..., help="Category name"),
+) -> None:
+    """Find and work on the next unresolved issue in a category.
+
+    This command finds the first unresolved document (not marked as DONE) in the
+    specified category, shows its title, and asks if you want to work on it.
+    If yes, it displays the full content and copies it to the clipboard.
+
+    Examples:
+        cfs instructions next bugs    # Work on the next bug
+        cfs instructions next features  # Work on the next feature
+    """
+    from cfs.documents import (
+        get_next_unresolved_document_id,
+        get_document_title,
+        find_document_by_id,
+    )
+
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Validate category
+    try:
+        category_path = core.get_category_path(cfs_root, category)
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Find next unresolved document
+    target_doc_id = get_next_unresolved_document_id(category_path)
+    if target_doc_id is None:
+        console.print(
+            f"[yellow]All of the issues have been completed in the {category} folder. "
+            "Please choose another folder to work on.[/yellow]",
+        )
+        raise typer.Abort()
+
+    # Find document
+    doc_path = find_document_by_id(category_path, target_doc_id)
+    if doc_path is None or not doc_path.exists():
+        try:
+            raise DocumentNotFoundError(target_doc_id, category)
+        except DocumentNotFoundError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+
+    # Get document title
+    try:
+        title = get_document_title(doc_path)
+    except Exception as e:
+        console.print(f"[red]Error reading document title: {e}[/red]")
+        raise typer.Abort()
+
+    # Show title and ask for confirmation
+    console.print()
+    console.print(f"[bold]Next issue in {category}:[/bold] {title}")
+    console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
+    console.print()
+
+    if not typer.confirm("Would you like to work on this issue?", default=True):
+        console.print("[yellow]Cancelled[/yellow]")
+        raise typer.Abort()
+
+    # Get document content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        console.print(f"[red]Error reading document: {e}[/red]")
+        raise typer.Abort()
+
+    # Display full document content
+    console.print()
+    console.print("[bold cyan]--- Document Content ---[/bold cyan]")
+    console.print()
+    console.print(content)
+    console.print()
+    console.print("[bold cyan]--- End Document Content ---[/bold cyan]")
+    console.print()
+
+    # Copy to clipboard
+    try:
+        import pyperclip
+
+        pyperclip.copy(content)
+        console.print("[green]✓ Instructions copied to clipboard[/green]")
+    except ImportError:
+        console.print(
+            "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+        )
+    except Exception as e:
+        console.print(
+            f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
+        )
+        console.print(
+            "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+        )
+
+
 @instructions_app.command("order")
 def order_documents_command(
     category: str = typer.Argument(..., help="Category name"),

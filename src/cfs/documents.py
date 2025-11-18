@@ -431,6 +431,39 @@ def get_next_document_id(category_path: Path) -> Optional[int]:
     return min(doc_ids)
 
 
+def get_next_unresolved_document_id(category_path: Path) -> Optional[int]:
+    """Get the ID of the next (first) unresolved document in a category.
+
+    Unresolved documents are those that don't have 'DONE' in their filename.
+    Completed documents have the format: {id}-DONE-{title}.md
+
+    Args:
+        category_path: Path to the category directory.
+
+    Returns:
+        Document ID of the first unresolved document (lowest ID), or None if no unresolved documents exist.
+    """
+    if not category_path.exists():
+        return None
+
+    unresolved_doc_ids = []
+    for file in category_path.iterdir():
+        if file.is_file() and file.suffix == ".md":
+            parsed_id = parse_document_id(file.name)
+            if parsed_id is not None:
+                # Check if document is completed (has DONE in filename)
+                stem = file.stem
+                # Completed documents have format: {id}-DONE-{title}
+                is_completed = stem.startswith(f"{parsed_id}-DONE-")
+                if not is_completed:
+                    unresolved_doc_ids.append(parsed_id)
+
+    if not unresolved_doc_ids:
+        return None
+
+    return min(unresolved_doc_ids)
+
+
 def get_document_title(doc_path: Path) -> str:
     """Extract title from a document.
 
