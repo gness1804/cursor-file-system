@@ -1306,6 +1306,84 @@ def version() -> None:
     typer.echo(f"cfs version {__version__}")
 
 
+def _format_tree_entry(path: Path, name: str) -> str:
+    """Format a tree entry, highlighting incomplete issues in bold color."""
+    if path.is_file() and path.suffix == ".md":
+        try:
+            from cfs.documents import parse_document_id
+        except ImportError:
+            return name
+
+        parsed_id = parse_document_id(path.name)
+        if parsed_id is not None:
+            stem = path.stem
+            if not stem.startswith(f"{parsed_id}-DONE-"):
+                return f"[bold orange3]{name}[/]"
+
+    return name
+
+
+def _generate_tree(path: Path, prefix: str = "", is_last: bool = True) -> str:
+    """Generate a tree structure string for a directory.
+
+    Args:
+        path: Path to the directory or file.
+        prefix: Prefix string for the current level (for indentation).
+        is_last: Whether this is the last item at its level.
+
+    Returns:
+        Tree structure string.
+    """
+    # Get the name to display
+    name = path.name if path.name else str(path)
+    if not name:  # Root directory case
+        name = ".cursor"
+
+    # Determine the connector and next prefix
+    connector = "└── " if is_last else "├── "
+    next_prefix = prefix + ("    " if is_last else "│   ")
+
+    formatted_name = _format_tree_entry(path, name)
+    result = prefix + connector + formatted_name + "\n"
+
+    # If it's a directory, recurse into it
+    if path.is_dir():
+        try:
+            # Get all items, sorted: directories first, then files
+            items = sorted(
+                path.iterdir(),
+                key=lambda p: (p.is_file(), p.name.lower()),
+            )
+
+            for i, item in enumerate(items):
+                is_last_item = i == len(items) - 1
+                result += _generate_tree(item, next_prefix, is_last_item)
+        except PermissionError:
+            # Skip directories we can't access
+            pass
+
+    return result
+
+
+@app.command("tree")
+def tree() -> None:
+    """Show the full file tree of the .cursor folder including empty folders.
+
+    This command provides a quick reference for developers to see the complete
+    structure of the CFS directory, including all categories and files.
+    """
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Generate and display the tree
+    tree_output = _generate_tree(cfs_root, "", True)
+    console.print(tree_output)
+
+
 # Rules commands
 @rules_app.command("create")
 def create_rule(

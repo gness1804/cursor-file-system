@@ -436,3 +436,93 @@ class TestHandoffPickupCommand:
 
             assert result.exit_code != 0
             assert "CFS structure not found" in result.stdout
+
+
+class TestTreeCommand:
+    """Tests for `cfs tree` command."""
+
+    def test_tree_success(self, runner, temp_cfs):
+        """Test successfully displaying tree structure."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create some files and directories
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("content")
+        (cursor_dir / "features" / "1-test-feature.md").write_text("content")
+        (cursor_dir / "rules" / "test-rules.mdc").write_text("content")
+        # Leave some directories empty to test empty folder display
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["tree"])
+
+            assert result.exit_code == 0
+            assert ".cursor" in result.stdout
+            assert "bugs" in result.stdout
+            assert "features" in result.stdout
+            assert "rules" in result.stdout
+            # Check that empty folders are shown
+            assert "research" in result.stdout or "qa" in result.stdout
+
+    def test_tree_shows_empty_folders(self, runner, temp_cfs):
+        """Test that empty folders are displayed in the tree."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Ensure some directories exist but are empty
+        (cursor_dir / "research").mkdir(exist_ok=True)
+        (cursor_dir / "qa").mkdir(exist_ok=True)
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["tree"])
+
+            assert result.exit_code == 0
+            # Empty folders should still appear in the tree
+            assert "research" in result.stdout
+            assert "qa" in result.stdout
+
+    def test_tree_shows_all_files(self, runner, temp_cfs):
+        """Test that all files are displayed in the tree."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create multiple files
+        (cursor_dir / "bugs" / "1-first.md").write_text("content")
+        (cursor_dir / "bugs" / "2-second.md").write_text("content")
+        (cursor_dir / "init.md").write_text("content")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["tree"])
+
+            assert result.exit_code == 0
+            assert "1-first.md" in result.stdout
+            assert "2-second.md" in result.stdout
+            assert "init.md" in result.stdout
+
+    def test_tree_no_cfs(self, runner, tmp_path):
+        """Test that missing CFS structure raises error."""
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["tree"])
+
+            assert result.exit_code != 0
+            assert "CFS structure not found" in result.stdout
+
+
+class TestTreeFormatting:
+    """Tests for tree formatting helper functions."""
+
+    def test_format_tree_highlights_incomplete(self, tmp_path):
+        """Ensure incomplete documents are highlighted."""
+        from cfs.cli import _format_tree_entry
+
+        file_path = tmp_path / "1-incomplete.md"
+        file_path.write_text("content")
+
+        formatted = _format_tree_entry(file_path, file_path.name)
+        assert "[bold orange3]1-incomplete.md[/]" == formatted
+
+    def test_format_tree_skips_completed(self, tmp_path):
+        """Ensure completed documents are not highlighted."""
+        from cfs.cli import _format_tree_entry
+
+        file_path = tmp_path / "1-DONE-complete.md"
+        file_path.write_text("content")
+
+        formatted = _format_tree_entry(file_path, file_path.name)
+        assert formatted == file_path.name

@@ -54,6 +54,11 @@ After installation, the `cfs` command will be available in your PATH.
    cfs instructions view
    ```
 
+4. **View the file tree structure**:
+   ```bash
+   cfs tree
+   ```
+
 ## Usage
 
 ### Initialization
@@ -250,6 +255,42 @@ Would you like to pick up this handoff document? [Y/n]: y
 ✓ Handoff document copied to clipboard
 ```
 
+### Viewing File Tree
+
+Display the complete file tree structure of the `.cursor` folder:
+
+```bash
+cfs tree
+```
+
+**How it works:**
+- Shows the full directory structure starting from `.cursor`
+- Includes all categories, files, and empty folders
+- Highlights incomplete issues in bold orange text for quick visibility
+- Provides a quick visual reference for developers
+- Uses tree-style formatting with Unicode box-drawing characters
+
+**Example:**
+```bash
+$ cfs tree
+└── .cursor
+    ├── bugs
+    │   ├── 1-fix-login-bug.md
+    │   └── 2-memory-leak-api.md
+    ├── features
+    │   └── 1-add-user-auth.md
+    ├── research
+    ├── refactors
+    ├── docs
+    ├── progress
+    │   └── 1-handoff-phase-2.md
+    ├── qa
+    ├── tmp
+    ├── rules
+    │   └── project-rules.mdc
+    └── init.md
+```
+
 ### Creating Rules Documents
 
 Create Cursor rules documents (`.mdc` files) with automatic boilerplate:
@@ -286,6 +327,7 @@ The generated file includes:
 ### Global Commands
 
 - `cfs init [--root PATH] [--force]` - Initialize CFS structure
+- `cfs tree` - Show the full file tree of the .cursor folder including empty folders
 - `cfs version` - Show version number
 - `cfs --help` - Show help message
 
