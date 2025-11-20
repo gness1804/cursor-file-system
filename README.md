@@ -47,11 +47,15 @@ After installation, the `cfs` command will be available in your PATH.
 2. **Create your first document**:
    ```bash
    cfs instructions bugs create --title "Fix login bug"
+   # Or use the short form:
+   cfs instr bugs create --title "Fix login bug"
    ```
 
 3. **View all documents**:
    ```bash
    cfs instructions view
+   # Or use the short form:
+   cfs instr view
    ```
 
 4. **View the file tree structure**:
@@ -83,12 +87,16 @@ Create new instruction documents in any category:
 ```bash
 # Create with title flag (will prompt to edit)
 cfs instructions bugs create --title "Fix login bug"
+# Or use the short form:
+cfs instr bugs create --title "Fix login bug"
 
 # Create with title and immediately open editor
 cfs instructions bugs create --title "Fix login bug" --edit
+# Or: cfs instr bugs create --title "Fix login bug" --edit
 
 # Create with interactive prompts
 cfs instructions features create
+# Or: cfs instr features create
 # Will prompt for: Document title
 # Then ask: Would you like to edit now? [y/N]
 ```
@@ -169,9 +177,12 @@ The `next` command automatically finds and works on the first unresolved issue i
 ```bash
 # Find and work on the next unresolved bug
 cfs instructions next bugs
+# Or use the short form:
+cfs instr next bugs
 
 # Find and work on the next unresolved feature
 cfs instructions next features
+# Or: cfs instr next features
 ```
 
 **How it works:**
@@ -207,6 +218,8 @@ Generate instructions for creating a handoff document:
 
 ```bash
 cfs instructions handoff
+# Or use the short form:
+cfs instr handoff
 ```
 
 This command:
@@ -217,6 +230,7 @@ This command:
 **Example:**
 ```bash
 $ cfs instructions handoff
+# Or: cfs instr handoff
 
 --- Handoff Instructions ---
 # Create Handoff Document
@@ -230,6 +244,8 @@ Pick up the first incomplete handoff document from the progress folder:
 
 ```bash
 cfs instructions handoff pickup
+# Or use the short form:
+cfs instr handoff pickup
 ```
 
 **How it works:**
@@ -333,6 +349,8 @@ The generated file includes:
 
 ### Instructions Commands
 
+**Note:** You can use either `instructions` or the shorter `instr` alias for all commands below.
+
 - `cfs instructions <category> create [--title TITLE] [--edit]` - Create new document
 - `cfs instructions <category> edit <id>` - Edit existing document
 - `cfs instructions <category> delete <id> [--force]` - Delete document
@@ -343,6 +361,11 @@ The generated file includes:
 - `cfs instructions next <category>` - Find and work on the next unresolved issue
 - `cfs instructions handoff` - Generate instructions for creating a handoff document
 - `cfs instructions handoff pickup` - Pick up the first incomplete handoff document
+
+**Examples with short alias:**
+- `cfs instr view` - View all documents
+- `cfs instr bugs create --title "Fix bug"` - Create a bug document
+- `cfs instr next features` - Work on next feature
 
 ### Rules Commands
 

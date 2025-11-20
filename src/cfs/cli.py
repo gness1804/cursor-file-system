@@ -99,6 +99,7 @@ handoff_app = typer.Typer(
 
 # Register subcommand groups
 app.add_typer(instructions_app, name="instructions")
+app.add_typer(instructions_app, name="instr")  # Short alias for instructions
 app.add_typer(rules_app, name="rules")
 instructions_app.add_typer(handoff_app, name="handoff")
 
