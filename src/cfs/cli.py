@@ -459,10 +459,17 @@ def create_category_commands() -> None:
             @category_app.command("complete")
             def complete_in_category(
                 doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-y",
+                    "--yes",
+                    help="Skip confirmation and complete immediately",
+                ),
             ) -> None:
                 """Mark a document as complete by appending '-done' to filename and adding a comment."""
                 from cfs import documents
-                from cfs.documents import parse_document_id_from_string
+                from cfs.documents import parse_document_id_from_string, get_document_title
 
                 try:
                     # Find CFS root
@@ -494,6 +501,12 @@ def create_category_commands() -> None:
                         handle_cfs_error(e)
                         raise typer.Abort()
 
+                # Get document title for confirmation
+                try:
+                    title = get_document_title(doc_path)
+                except Exception:
+                    title = doc_path.stem
+
                 # Show document preview (first few lines)
                 try:
                     content = doc_path.read_text(encoding="utf-8")
@@ -506,6 +519,18 @@ def create_category_commands() -> None:
                     console.print(f"[dim]{preview}[/dim]\n")
                 except Exception:
                     pass
+
+                # Confirm before completing (unless --force flag is set)
+                if not force:
+                    console.print(f"[bold]Document:[/bold] {title}")
+                    console.print(f"[dim]Category: {cat}, ID: {parsed_id}[/dim]")
+                    console.print()
+                    if not typer.confirm(
+                        f"Mark document {parsed_id} as complete?",
+                        default=False,
+                    ):
+                        console.print("[yellow]Operation cancelled[/yellow]")
+                        raise typer.Abort()
 
                 # Complete document
                 try:

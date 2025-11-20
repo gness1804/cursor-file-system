@@ -146,6 +146,42 @@ BUGS
 └━━━━┴━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┴━━━━━━┴━━━━━━━━━━━━━━━━┘
 ```
 
+### Completing Documents
+
+Mark documents as done with confirmation:
+
+```bash
+# Complete with confirmation prompt
+cfs instructions bugs complete 1
+# Or use the short form:
+cfs instr bugs complete 1
+
+# Complete without confirmation (force)
+cfs instructions bugs complete 1 --force
+# Or: cfs instructions bugs complete 1 -y
+```
+
+**How it works:**
+- Shows a preview of the document
+- Asks for confirmation before marking as complete
+- Renames the file to include `DONE` prefix (e.g., `1-DONE-fix-login-bug.md`)
+- Adds a completion comment to the document
+
+**Example:**
+```bash
+$ cfs instructions bugs complete 1
+
+Document preview:
+# Fix login bug
+The login functionality is broken...
+
+Document: Fix login bug
+Category: bugs, ID: 1
+
+Mark document 1 as complete? [y/N]: y
+✓ Completed document: .cursor/bugs/1-DONE-fix-login-bug.md
+```
+
 ### Deleting Documents
 
 Delete documents with confirmation:
@@ -356,7 +392,7 @@ The generated file includes:
 - `cfs instructions <category> delete <id> [--force]` - Delete document
 - `cfs instructions <category> view` - View documents in category
 - `cfs instructions view [category]` - View all documents or filter by category
-- `cfs instructions <category> complete <id>` - Mark document as done
+- `cfs instructions <category> complete <id> [--force/-y]` - Mark document as done (requires confirmation)
 - `cfs instructions <category> order` - Order documents by naming convention
 - `cfs instructions next <category>` - Find and work on the next unresolved issue
 - `cfs instructions handoff` - Generate instructions for creating a handoff document
@@ -460,8 +496,10 @@ cfs instructions features view
 # Edit as you work
 cfs instructions features edit 1
 
-# Mark as complete when done
+# Mark as complete when done (will prompt for confirmation)
 cfs instructions features complete 1
+# Or skip confirmation:
+cfs instructions features complete 1 --force
 ```
 
 ### Example Workflow: Working Through Issues
@@ -470,8 +508,10 @@ cfs instructions features complete 1
 # Work on the next unresolved bug
 cfs instructions next bugs
 
-# After fixing, mark it as complete
+# After fixing, mark it as complete (will prompt for confirmation)
 cfs instructions bugs complete 1
+# Or skip confirmation:
+cfs instructions bugs complete 1 -y
 
 # Continue with the next issue
 cfs instructions next bugs

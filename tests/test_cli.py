@@ -228,6 +228,106 @@ class TestDeleteCommand:
             assert bug_file.exists()  # File should still exist
 
 
+class TestCompleteCommand:
+    """Tests for `cfs instructions <category> complete` command."""
+
+    def test_complete_document_success(self, runner, temp_cfs):
+        """Test successful document completion with confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create a document first
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.write_text("# Test Bug\n\nContent")
+        assert bug_file.exists()
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "complete", "1"],
+                input="y\n",  # Confirm completion
+            )
+
+            assert result.exit_code == 0
+            # File should be renamed with DONE prefix
+            completed_file = cursor_dir / "bugs" / "1-DONE-test-bug.md"
+            assert completed_file.exists()
+            assert not bug_file.exists()
+
+    def test_complete_document_with_force_flag(self, runner, temp_cfs):
+        """Test completing document with --force flag skips confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create a document first
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.write_text("# Test Bug\n\nContent")
+        assert bug_file.exists()
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "complete", "1", "--force"],
+            )
+
+            assert result.exit_code == 0
+            # File should be renamed with DONE prefix
+            completed_file = cursor_dir / "bugs" / "1-DONE-test-bug.md"
+            assert completed_file.exists()
+            assert not bug_file.exists()
+
+    def test_complete_document_with_y_flag(self, runner, temp_cfs):
+        """Test completing document with -y flag skips confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create a document first
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.write_text("# Test Bug\n\nContent")
+        assert bug_file.exists()
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "complete", "1", "-y"],
+            )
+
+            assert result.exit_code == 0
+            # File should be renamed with DONE prefix
+            completed_file = cursor_dir / "bugs" / "1-DONE-test-bug.md"
+            assert completed_file.exists()
+            assert not bug_file.exists()
+
+    def test_complete_document_without_confirmation(self, runner, temp_cfs):
+        """Test that completion requires confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.write_text("# Test Bug\n\nContent")
+        assert bug_file.exists()
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "complete", "1"],
+                input="n\n",  # Don't confirm
+            )
+
+            assert result.exit_code != 0
+            assert bug_file.exists()  # File should still exist
+            assert "Operation cancelled" in result.stdout
+
+    def test_complete_document_not_found(self, runner, temp_cfs):
+        """Test completing non-existent document."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "complete", "999", "--force"],
+            )
+
+            assert result.exit_code != 0
+            assert "not found" in result.stdout
+
+
 class TestViewCommand:
     """Tests for `cfs instructions view` command."""
 
