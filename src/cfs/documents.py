@@ -431,6 +431,27 @@ def get_next_document_id(category_path: Path) -> Optional[int]:
     return min(doc_ids)
 
 
+def is_document_incomplete(doc_info: Dict[str, Any]) -> bool:
+    """Check if a document is incomplete (not marked as DONE).
+
+    Args:
+        doc_info: Document info dict with 'id' and 'path' keys.
+
+    Returns:
+        True if document is incomplete, False if completed.
+    """
+    doc_path = doc_info.get("path")
+    doc_id = doc_info.get("id")
+
+    if doc_path is None or doc_id is None:
+        return True  # Treat as incomplete if info is missing
+
+    stem = doc_path.stem
+    # Completed documents have format: {id}-DONE-{title}
+    is_completed = stem.startswith(f"{doc_id}-DONE-")
+    return not is_completed
+
+
 def get_next_unresolved_document_id(category_path: Path) -> Optional[int]:
     """Get the ID of the next (first) unresolved document in a category.
 

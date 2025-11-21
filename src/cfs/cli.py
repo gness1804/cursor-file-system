@@ -358,6 +358,12 @@ def create_category_commands() -> None:
                     None,
                     help="Optional document ID to view full content",
                 ),
+                incomplete_only: bool = typer.Option(
+                    False,
+                    "--incomplete-only",
+                    "-i",
+                    help="Show only incomplete issues",
+                ),
             ) -> None:
                 """View all documents in this category, or view a specific document by ID."""
                 from cfs import documents
@@ -365,6 +371,7 @@ def create_category_commands() -> None:
                     parse_document_id_from_string,
                     get_document_title,
                     find_document_by_id,
+                    is_document_incomplete,
                 )
                 from datetime import datetime
 
@@ -424,12 +431,24 @@ def create_category_commands() -> None:
                 docs_dict = documents.list_documents(cfs_root, cat)
                 doc_list = docs_dict.get(cat, [])
 
+                # Filter to incomplete only if flag is set
+                if incomplete_only:
+                    doc_list = [doc for doc in doc_list if is_document_incomplete(doc)]
+
                 if not doc_list:
-                    console.print(f"[yellow]No documents found in {cat} category[/yellow]")
+                    if incomplete_only:
+                        console.print(
+                            f"[yellow]No incomplete documents found in {cat} category[/yellow]"
+                        )
+                    else:
+                        console.print(f"[yellow]No documents found in {cat} category[/yellow]")
                     return
 
                 # Create table
-                table = Table(title=f"Documents in {cat}", box=box.ROUNDED)
+                table_title = f"Documents in {cat}"
+                if incomplete_only:
+                    table_title += " (Incomplete Only)"
+                table = Table(title=table_title, box=box.ROUNDED)
                 table.add_column("ID", style="cyan", no_wrap=True)
                 table.add_column("Title", style="magenta")
                 table.add_column("Size", justify="right", style="green")
@@ -557,9 +576,16 @@ def view_all(
         None,
         help="Optional category name to filter by",
     ),
+    incomplete_only: bool = typer.Option(
+        False,
+        "--incomplete-only",
+        "-i",
+        help="Show only incomplete issues",
+    ),
 ) -> None:
     """View all documents across all categories or a specific category."""
     from cfs import documents
+    from cfs.documents import is_document_incomplete
     from datetime import datetime
 
     try:
@@ -580,6 +606,11 @@ def view_all(
     # List documents
     docs_dict = documents.list_documents(cfs_root, category)
 
+    # Filter to incomplete only if flag is set
+    if incomplete_only:
+        for cat in docs_dict:
+            docs_dict[cat] = [doc for doc in docs_dict[cat] if is_document_incomplete(doc)]
+
     if not docs_dict:
         if category:
             console.print(
@@ -594,12 +625,20 @@ def view_all(
         # Single category view
         doc_list = docs_dict.get(category, [])
         if not doc_list:
-            console.print(
-                f"[yellow]No documents found in {category} category[/yellow]",
-            )
+            if incomplete_only:
+                console.print(
+                    f"[yellow]No incomplete documents found in {category} category[/yellow]",
+                )
+            else:
+                console.print(
+                    f"[yellow]No documents found in {category} category[/yellow]",
+                )
             return
 
-        table = Table(title=f"Documents in {category}", box=box.ROUNDED)
+        table_title = f"Documents in {category}"
+        if incomplete_only:
+            table_title += " (Incomplete Only)"
+        table = Table(title=table_title, box=box.ROUNDED)
         table.add_column("ID", style="cyan", no_wrap=True)
         table.add_column("Title", style="magenta")
         table.add_column("Size", justify="right", style="green")
@@ -631,14 +670,20 @@ def view_all(
         has_documents = any(doc_list for doc_list in docs_dict.values())
 
         if not has_documents:
-            console.print("[yellow]No documents found[/yellow]")
+            if incomplete_only:
+                console.print("[yellow]No incomplete documents found[/yellow]")
+            else:
+                console.print("[yellow]No documents found[/yellow]")
             return
 
         for cat, doc_list in sorted(docs_dict.items()):
             if not doc_list:
                 continue
 
-            console.print(f"\n[bold cyan]{cat.upper()}[/bold cyan]")
+            category_header = f"[bold cyan]{cat.upper()}[/bold cyan]"
+            if incomplete_only:
+                category_header += " (Incomplete Only)"
+            console.print(f"\n{category_header}")
             table = Table(box=box.SIMPLE)
             table.add_column("ID", style="cyan", no_wrap=True)
             table.add_column("Title", style="magenta")
