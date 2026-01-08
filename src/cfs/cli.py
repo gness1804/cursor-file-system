@@ -187,6 +187,8 @@ def create_category_commands() -> None:
                     "",
                     "## Contents",
                     "",
+                    "## Acceptance criteria",
+                    "",
                 ]
                 initial_content = "\n".join(initial_content_lines)
 
