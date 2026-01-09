@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-01-09
+## [## [Unreleased]] - 2026-01-09
 
 ### Added
 - Initial release of cursor-instructions-cli
@@ -23,5 +23,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code quality tools (Black, Ruff)
 - Full documentation and usage examples
 
-[Unreleased]: https://github.com/yourusername/cursor-instructions-cli/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/cursor-instructions-cli/releases/tag/v0.1.0
+[Unreleased]: https://github.com/yourusername/cursor-instructions-cli/compare/v## [Unreleased]...HEAD
+[## [Unreleased]]: https://github.com/yourusername/cursor-instructions-cli/releases/tag/v## [Unreleased]
