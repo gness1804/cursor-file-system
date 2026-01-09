@@ -547,6 +547,57 @@ cfs rules create --name "my-project" --comprehensive --edit
 # - Development workflow
 ```
 
+## Versioning
+
+This project uses [Semantic Versioning](https://semver.org/) and [bump2version](https://github.com/c4urself/bump2version) for automated version management.
+
+### Version Format
+
+Versions follow the format `MAJOR.MINOR.PATCH` (e.g., `0.1.0`):
+- **MAJOR**: Incompatible API changes
+- **MINOR**: New features (backward compatible)
+- **PATCH**: Bug fixes (backward compatible)
+
+### Bumping Versions
+
+Use bump2version to automatically increment versions, update files, and create git tags:
+
+```bash
+# Bump patch version (e.g., 0.1.0 → 0.1.1)
+bump2version patch
+
+# Bump minor version (e.g., 0.1.0 → 0.2.0)
+bump2version minor
+
+# Bump major version (e.g., 0.1.0 → 1.0.0)
+bump2version major
+```
+
+bump2version will automatically:
+1. Update the version in `pyproject.toml`
+2. Update the `CHANGELOG.md` with the new version and date
+3. Create a git commit with the version bump
+4. Create a git tag (e.g., `v0.1.0`)
+
+### Changelog
+
+Maintain `CHANGELOG.md` by adding changes under the `[Unreleased]` section. When releasing, bump2version automatically moves these to the new version section.
+
+**Format:**
+- Use [Keep a Changelog](https://keepachangelog.com/) format
+- Categories: Added, Changed, Deprecated, Removed, Fixed, Security
+
+**Example entry:**
+```markdown
+## [Unreleased]
+
+### Added
+- New feature X
+
+### Fixed
+- Bug Y
+```
+
 ## Development
 
 ### Project Structure
