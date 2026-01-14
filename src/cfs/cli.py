@@ -82,6 +82,53 @@ def handle_cfs_error(error: CFSError) -> None:
         console.print(f"[red]Error: {error}[/red]")
 
 
+def prompt_editor_selection(title: str) -> Optional[tuple[str, list[str]]]:
+    """Prompt user to select an editor for editing a document.
+
+    Args:
+        title: The document title (for display in the prompt).
+
+    Returns:
+        Tuple of (editor_command, editor_args) if user selects an editor,
+        None if user chooses not to edit.
+    """
+    from cfs import editor as editor_module
+
+    available_editors = editor_module.get_available_editors()
+    default_editor = editor_module.detect_editor()
+
+    # Build options list
+    console.print()
+    console.print(f"[bold]Select an editor for '{title}':[/bold]")
+    console.print()
+    console.print("  [cyan]0[/cyan]  Don't edit")
+    console.print(f"  [cyan]1[/cyan]  Default editor ({default_editor})")
+
+    # Add available editors
+    option_map: dict[int, tuple[str, list[str]]] = {
+        1: (default_editor, []),
+    }
+    for idx, (display_name, cmd, args) in enumerate(available_editors, start=2):
+        console.print(f"  [cyan]{idx}[/cyan]  {display_name}")
+        option_map[idx] = (cmd, args)
+
+    console.print()
+
+    # Get user selection
+    max_option = len(available_editors) + 1
+    while True:
+        try:
+            choice = typer.prompt("Enter choice", default="0")
+            choice_int = int(choice)
+            if choice_int == 0:
+                return None
+            if 1 <= choice_int <= max_option:
+                return option_map[choice_int]
+            console.print(f"[red]Please enter a number between 0 and {max_option}[/red]")
+        except ValueError:
+            console.print("[red]Please enter a valid number[/red]")
+
+
 # Create subcommand groups
 instructions_app = typer.Typer(
     name="instructions",
@@ -201,15 +248,14 @@ def create_category_commands() -> None:
                     console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
                     content = editor.edit_content(initial_content)
                 else:
-                    # Prompt user: edit now or create empty?
-                    if typer.confirm(
-                        f"Would you like to edit '{title}' now?",
-                        default=False,
-                    ):
+                    # Prompt user to select an editor
+                    editor_choice = prompt_editor_selection(title)
+                    if editor_choice is not None:
                         from cfs import editor
 
-                        console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
-                        content = editor.edit_content(initial_content)
+                        editor_cmd, editor_args = editor_choice
+                        console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
+                        content = editor.edit_content(initial_content, editor_cmd, editor_args)
 
                 # Create document with the full content (user may have edited the structure)
                 try:

@@ -4,7 +4,45 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Tuple
+
+
+# Known editors with display names and commands
+KNOWN_EDITORS = [
+    ("VS Code", "code", ["--wait"]),
+    ("Cursor", "cursor", ["--wait"]),
+    ("Vim", "vim", []),
+    ("Neovim", "nvim", []),
+    ("Nano", "nano", []),
+    ("Sublime Text", "subl", ["--wait"]),
+    ("Emacs", "emacs", []),
+]
+
+
+def get_available_editors() -> List[Tuple[str, str, List[str]]]:
+    """Get list of available editors on the system.
+
+    Returns:
+        List of tuples: (display_name, command, extra_args)
+    """
+    available = []
+    for display_name, cmd, extra_args in KNOWN_EDITORS:
+        if is_editor_available(cmd):
+            available.append((display_name, cmd, extra_args))
+    return available
+
+
+def is_editor_available(editor_cmd: str) -> bool:
+    """Check if an editor command is available on the system."""
+    try:
+        result = subprocess.run(
+            ["which", editor_cmd],
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
 
 
 def detect_editor() -> str:
@@ -41,12 +79,17 @@ def detect_editor() -> str:
     return "nano"
 
 
-def edit_content(initial_content: str = "", editor: Optional[str] = None) -> str:
+def edit_content(
+    initial_content: str = "",
+    editor: Optional[str] = None,
+    editor_args: Optional[List[str]] = None,
+) -> str:
     """Edit content using a text editor.
 
     Args:
         initial_content: Initial content to edit.
         editor: Editor command to use. If None, will auto-detect.
+        editor_args: Additional arguments to pass to the editor.
 
     Returns:
         Edited content.
@@ -57,14 +100,18 @@ def edit_content(initial_content: str = "", editor: Optional[str] = None) -> str
     if editor is None:
         editor = detect_editor()
 
+    if editor_args is None:
+        editor_args = []
+
     # Create temporary file with initial content
     with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp_file:
         tmp_path = tmp_file.name
         tmp_file.write(initial_content)
 
     try:
-        # Launch editor
-        subprocess.run([editor, tmp_path], check=False)
+        # Launch editor with any extra args
+        cmd = [editor] + editor_args + [tmp_path]
+        subprocess.run(cmd, check=False)
 
         # Read edited content
         with open(tmp_path, "r") as f:
