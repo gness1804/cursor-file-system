@@ -1348,6 +1348,8 @@ This directory was initialized using the Cursor File Structure (CFS) CLI.{langua
 
 Use the `cfs` CLI tool to manage documents in these categories.
 
+*NOTE: The command `cfs instructions` has two aliases: `cfs i` and `cfs instr`.*
+
 ### Quick Start
 
 ```bash
