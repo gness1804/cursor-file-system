@@ -16,7 +16,7 @@ KNOWN_EDITORS = [
     ("Nano", "nano", []),
     ("Sublime Text", "subl", ["--wait"]),
     ("Emacs", "emacs", []),
-    ("Zed")
+    ("Zed", "zed", []),
 ]
 
 
