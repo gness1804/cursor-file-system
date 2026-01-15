@@ -310,9 +310,27 @@ def create_category_commands() -> None:
                     handle_cfs_error(e)
                     raise typer.Abort()
 
-                # Launch editor with current content
-                console.print(f"[yellow]Opening editor for document {parsed_id}...[/yellow]")
-                edited_content = editor.edit_content(current_content)
+                # Get document title for prompt
+                from cfs.documents import get_document_title, find_document_by_id
+
+                doc_path = find_document_by_id(category_path, parsed_id)
+                if doc_path:
+                    try:
+                        title = get_document_title(doc_path)
+                    except Exception:
+                        title = f"Document {parsed_id}"
+                else:
+                    title = f"Document {parsed_id}"
+
+                # Prompt user to select an editor
+                editor_choice = prompt_editor_selection(title)
+                if editor_choice is None:
+                    console.print("[yellow]Edit cancelled[/yellow]")
+                    return
+
+                editor_cmd, editor_args = editor_choice
+                console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
+                edited_content = editor.edit_content(current_content, editor_cmd, editor_args)
 
                 # Save updated content
                 try:
