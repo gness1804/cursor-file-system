@@ -4,7 +4,7 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Union
 
 
 # Known editors with display names and commands
@@ -125,3 +125,19 @@ def edit_content(
             Path(tmp_path).unlink()
         except OSError:
             pass
+
+
+def open_file_in_editor(
+    file_path: Union[str, Path],
+    editor: Optional[str] = None,
+    editor_args: Optional[List[str]] = None,
+) -> None:
+    """Open a file directly in the chosen editor."""
+    if editor is None:
+        editor = detect_editor()
+
+    if editor_args is None:
+        editor_args = []
+
+    cmd = [editor] + editor_args + [str(file_path)]
+    subprocess.run(cmd, check=False)

@@ -254,6 +254,28 @@ def create_category_commands() -> None:
                         from cfs import editor
 
                         editor_cmd, editor_args = editor_choice
+                        if editor_cmd == "zed":
+                            try:
+                                doc_path = documents.create_document(
+                                    category_path,
+                                    title,
+                                    initial_content,
+                                    repo_root,
+                                )
+                                console.print(
+                                    f"[green]✓ Created document: {doc_path}[/green]",
+                                )
+                            except (DocumentOperationError, ValueError) as e:
+                                if isinstance(e, DocumentOperationError):
+                                    handle_cfs_error(e)
+                                else:
+                                    console.print(f"[red]Error: {e}[/red]")
+                                raise typer.Abort()
+
+                            console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
+                            editor.open_file_in_editor(doc_path, editor_cmd, editor_args)
+                            return
+
                         console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
                         content = editor.edit_content(initial_content, editor_cmd, editor_args)
 
@@ -328,6 +350,19 @@ def create_category_commands() -> None:
                     return
 
                 editor_cmd, editor_args = editor_choice
+                if editor_cmd == "zed":
+                    if not doc_path:
+                        console.print(
+                            f"[red]Error: Document with ID {parsed_id} not found[/red]",
+                        )
+                        raise typer.Abort()
+                    console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
+                    editor.open_file_in_editor(doc_path, editor_cmd, editor_args)
+                    console.print(
+                        f"[green]✓ Opened document: {doc_path}[/green]",
+                    )
+                    return
+
                 console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
                 edited_content = editor.edit_content(current_content, editor_cmd, editor_args)
 
