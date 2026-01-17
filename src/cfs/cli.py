@@ -4,18 +4,18 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.table import Table
-from rich import box
 
 from cfs import core
 from cfs.exceptions import (
     CFSError,
     CFSNotFoundError,
-    InvalidCategoryError,
     DocumentNotFoundError,
-    InvalidDocumentIDError,
     DocumentOperationError,
+    InvalidCategoryError,
+    InvalidDocumentIDError,
 )
 
 app = typer.Typer(
@@ -275,9 +275,8 @@ def create_category_commands() -> None:
                 doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
             ) -> None:
                 """Edit an existing document in this category."""
-                from cfs import documents
+                from cfs import documents, editor
                 from cfs.documents import parse_document_id_from_string
-                from cfs import editor
 
                 try:
                     # Find CFS root
@@ -311,7 +310,7 @@ def create_category_commands() -> None:
                     raise typer.Abort()
 
                 # Get document title for prompt
-                from cfs.documents import get_document_title, find_document_by_id
+                from cfs.documents import find_document_by_id, get_document_title
 
                 doc_path = find_document_by_id(category_path, parsed_id)
                 if doc_path:
@@ -433,14 +432,15 @@ def create_category_commands() -> None:
                 ),
             ) -> None:
                 """View all documents in this category, or view a specific document by ID."""
+                from datetime import datetime
+
                 from cfs import documents
                 from cfs.documents import (
-                    parse_document_id_from_string,
-                    get_document_title,
                     find_document_by_id,
+                    get_document_title,
                     is_document_incomplete,
+                    parse_document_id_from_string,
                 )
-                from datetime import datetime
 
                 try:
                     # Find CFS root
@@ -555,7 +555,7 @@ def create_category_commands() -> None:
             ) -> None:
                 """Mark a document as complete by appending '-done' to filename and adding a comment."""
                 from cfs import documents
-                from cfs.documents import parse_document_id_from_string, get_document_title
+                from cfs.documents import get_document_title, parse_document_id_from_string
 
                 try:
                     # Find CFS root
@@ -628,6 +628,92 @@ def create_category_commands() -> None:
                     handle_cfs_error(e)
                     raise typer.Abort()
 
+            @category_app.command("close")
+            def close_in_category(
+                doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-y",
+                    "--yes",
+                    help="Skip confirmation and close immediately",
+                ),
+            ) -> None:
+                """Mark a document as closed by prepending 'CLOSED-' to the filename."""
+                from cfs import documents
+                from cfs.documents import get_document_title, parse_document_id_from_string
+
+                try:
+                    # Find CFS root
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                try:
+                    # Get category path
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                # Parse ID (handle both numeric ID and filename)
+                try:
+                    parsed_id = parse_document_id_from_string(doc_id)
+                except InvalidDocumentIDError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                # Find document to show preview
+                doc_path = documents.find_document_by_id(category_path, parsed_id)
+                if doc_path is None or not doc_path.exists():
+                    try:
+                        raise DocumentNotFoundError(parsed_id, cat)
+                    except DocumentNotFoundError as e:
+                        handle_cfs_error(e)
+                        raise typer.Abort()
+
+                # Get document title for confirmation
+                try:
+                    title = get_document_title(doc_path)
+                except Exception:
+                    title = doc_path.stem
+
+                # Show document preview (first few lines)
+                try:
+                    content = doc_path.read_text(encoding="utf-8")
+                    lines = content.split("\n")[:5]
+                    preview = "\n".join(lines)
+                    if len(content.split("\n")) > 5:
+                        preview += "\n..."
+
+                    console.print("\n[yellow]Document preview:[/yellow]")
+                    console.print(f"[dim]{preview}[/dim]\n")
+                except Exception:
+                    pass
+
+                # Confirm before closing (unless --force flag is set)
+                if not force:
+                    console.print(f"[bold]Document:[/bold] {title}")
+                    console.print(f"[dim]Category: {cat}, ID: {parsed_id}[/dim]")
+                    console.print()
+                    if not typer.confirm(
+                        f"Mark document {parsed_id} as closed?",
+                        default=False,
+                    ):
+                        console.print("[yellow]Operation cancelled[/yellow]")
+                        raise typer.Abort()
+
+                # close document
+                try:
+                    new_path = documents.close_document(category_path, parsed_id)
+                    console.print(
+                        f"[green]✓ Closed document: {new_path}[/green]",
+                    )
+                except (DocumentNotFoundError, DocumentOperationError) as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
         # Create all commands for this category
         make_category_commands(category)
 
@@ -651,9 +737,10 @@ def view_all(
     ),
 ) -> None:
     """View all documents across all categories or a specific category."""
+    from datetime import datetime
+
     from cfs import documents
     from cfs.documents import is_document_incomplete
-    from datetime import datetime
 
     try:
         # Find CFS root
@@ -808,10 +895,10 @@ def exec_document(
         cfs exec bugs --next     # Same as above, using flag
     """
     from cfs.documents import (
-        parse_document_id_from_string,
-        get_next_document_id,
-        get_document_title,
         find_document_by_id,
+        get_document_title,
+        get_next_document_id,
+        parse_document_id_from_string,
     )
 
     try:
@@ -928,9 +1015,9 @@ def next_document(
         cfs instructions next features  # Work on the next feature
     """
     from cfs.documents import (
-        get_next_unresolved_document_id,
-        get_document_title,
         find_document_by_id,
+        get_document_title,
+        get_next_unresolved_document_id,
     )
 
     try:
@@ -1157,9 +1244,9 @@ def pickup_handoff() -> None:
         cfs instructions handoff pickup    # Pick up the next handoff document
     """
     from cfs.documents import (
-        get_next_unresolved_document_id,
-        get_document_title,
         find_document_by_id,
+        get_document_title,
+        get_next_unresolved_document_id,
     )
 
     try:

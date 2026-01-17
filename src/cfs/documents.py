@@ -1,7 +1,7 @@
 """Document management operations for CFS."""
 
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from cfs.exceptions import DocumentNotFoundError, DocumentOperationError, InvalidDocumentIDError
 
@@ -432,13 +432,11 @@ def get_next_document_id(category_path: Path) -> Optional[int]:
 
 
 def is_document_incomplete(doc_info: Dict[str, Any]) -> bool:
-    """Check if a document is incomplete (not marked as DONE).
-
+    """Check if a document is incomplete (not marked as DONE or CLOSED).
     Args:
         doc_info: Document info dict with 'id' and 'path' keys.
-
     Returns:
-        True if document is incomplete, False if completed.
+        True if document is incomplete, False if completed or closed.
     """
     doc_path = doc_info.get("path")
     doc_id = doc_info.get("id")
@@ -449,18 +447,18 @@ def is_document_incomplete(doc_info: Dict[str, Any]) -> bool:
     stem = doc_path.stem
     # Completed documents have format: {id}-DONE-{title}
     is_completed = stem.startswith(f"{doc_id}-DONE-")
-    return not is_completed
+    # Closed documents have format: {id}-CLOSED-{title}
+    is_closed = stem.startswith(f"{doc_id}-CLOSED-")
+    return not is_completed and not is_closed
 
 
 def get_next_unresolved_document_id(category_path: Path) -> Optional[int]:
     """Get the ID of the next (first) unresolved document in a category.
-
-    Unresolved documents are those that don't have 'DONE' in their filename.
+    Unresolved documents are those that don't have 'DONE' or 'CLOSED' in their filename.
     Completed documents have the format: {id}-DONE-{title}.md
-
+    Closed documents have the format: {id}-CLOSED-{title}.md
     Args:
         category_path: Path to the category directory.
-
     Returns:
         Document ID of the first unresolved document (lowest ID), or None if no unresolved documents exist.
     """
@@ -476,7 +474,9 @@ def get_next_unresolved_document_id(category_path: Path) -> Optional[int]:
                 stem = file.stem
                 # Completed documents have format: {id}-DONE-{title}
                 is_completed = stem.startswith(f"{parsed_id}-DONE-")
-                if not is_completed:
+                # Closed documents have format: {id}-CLOSED-{title}
+                is_closed = stem.startswith(f"{parsed_id}-CLOSED-")
+                if not is_completed and not is_closed:
                     unresolved_doc_ids.append(parsed_id)
 
     if not unresolved_doc_ids:
@@ -720,6 +720,92 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
     if new_path.exists() and new_path != doc_path:
         raise DocumentOperationError(
             "complete document",
+            f"Target filename already exists: {new_path}",
+        )
+
+    # Write content to new file
+    try:
+        new_path.write_text(content, encoding="utf-8")
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("write document", str(e))
+
+    # Delete old file if it's different from new file
+    if doc_path != new_path:
+        try:
+            doc_path.unlink()
+        except (OSError, PermissionError) as e:
+            # If deletion fails, try to clean up the new file
+            try:
+                new_path.unlink()
+            except Exception:
+                pass
+            raise DocumentOperationError("delete old document", str(e))
+
+    return new_path
+
+
+def close_document(category_path: Path, doc_id: int) -> Path:
+    """Mark a document as closed by inserting 'CLOSED' after the ID in filename and adding a comment.
+    Args:
+        category_path: Path to the category directory.
+        doc_id: Document ID to close.
+    Returns:
+        Path to the closed document file.
+    Raises:
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If file cannot be read, written, or renamed.
+    """
+    # Find document
+    doc_path = find_document_by_id(category_path, doc_id)
+    if doc_path is None or not doc_path.exists():
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
+
+    stem = doc_path.stem
+
+    # Check if already closed (check for pattern: {id}-CLOSED-)
+    if stem.startswith(f"{doc_id}-CLOSED-"):
+        raise DocumentOperationError(
+            "close document",
+            f"Document {doc_id} is already marked as closed",
+        )
+
+    # Parse the filename to extract the title part after the ID
+    # Format: {id}-{title} or {id}-CLOSED-{title}
+    if stem.startswith(f"{doc_id}-"):
+        # Extract title part (everything after "{id}-")
+        title_part = stem[len(f"{doc_id}-") :]
+        # If it already starts with "CLOSED-", it's already closed
+        if title_part.startswith("CLOSED-"):
+            raise DocumentOperationError(
+                "close document",
+                f"Document {doc_id} is already marked as closed",
+            )
+    else:
+        # Filename doesn't match expected pattern, use the whole stem as title
+        title_part = stem
+
+    # Read current content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        raise DocumentOperationError("read document", str(e))
+
+    # Append completion comment if not already present
+    closed_comment = "<!-- CLOSED -->"
+    # Check if comment already exists (with or without surrounding whitespace)
+    if closed_comment not in content:
+        # Ensure content ends with at least one newline, then add comment
+        content = content.rstrip() + "\n\n" + closed_comment + "\n"
+
+    # Generate new filename with 'CLOSED' after the ID: {id}-CLOSED-{title}.md
+    new_filename = f"{doc_id}-CLOSED-{title_part}.md"
+    new_path = category_path / new_filename
+
+    # Check if new filename already exists (shouldn't happen, but handle it)
+    if new_path.exists() and new_path != doc_path:
+        raise DocumentOperationError(
+            "close document",
             f"Target filename already exists: {new_path}",
         )
 
