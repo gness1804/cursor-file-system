@@ -252,7 +252,11 @@ def build_sync_plan(cfs_root: Path, github_issues: List[GitHubIssue]) -> SyncPla
                 cfs_body_normalized = cfs_body.strip()
                 github_body_normalized = (github_issue.body or "").strip()
 
-                if cfs_title != github_issue.title or cfs_body_normalized != github_body_normalized:
+                # Only flag as conflict if bodies differ, or if titles differ AND both have titles
+                body_differs = cfs_body_normalized != github_body_normalized
+                title_differs = cfs_title and cfs_title != github_issue.title
+
+                if body_differs or title_differs:
                     plan.add(
                         SyncItem(
                             action=SyncAction.CONTENT_CONFLICT,
@@ -479,19 +483,27 @@ def execute_sync_plan(
                 # Prompt for category if not determined from labels
                 category = item.category
                 if category is None:
-                    category = prompt_category_selection(console, item.title)
-                    if category is None:
-                        results["skipped"] += 1
+                    if dry_run:
+                        # In dry-run mode, skip category selection and just show placeholder
+                        console.print(
+                            f"[dim]Would create CFS doc (category TBD) "
+                            f"from GitHub #{item.github_issue.number}[/dim]"
+                        )
                         continue
+                    else:
+                        category = prompt_category_selection(console, item.title)
+                        if category is None:
+                            results["skipped"] += 1
+                            continue
 
-                if dry_run:
+                if not dry_run:
+                    _create_cfs_from_github(console, cfs_root, category, item.github_issue)
+                    results["created_cfs"] += 1
+                else:
                     console.print(
                         f"[dim]Would create CFS doc in {category} "
                         f"from GitHub #{item.github_issue.number}[/dim]"
                     )
-                else:
-                    _create_cfs_from_github(console, cfs_root, category, item.github_issue)
-                    results["created_cfs"] += 1
 
             elif item.action == SyncAction.CREATE_GITHUB:
                 if dry_run:
