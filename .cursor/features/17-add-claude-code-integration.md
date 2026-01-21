@@ -1,3 +1,6 @@
+---
+github_issue: 10
+---
 # Add Claude Code Integration
 
 ## Working directory

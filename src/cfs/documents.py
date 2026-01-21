@@ -1,7 +1,10 @@
 """Document management operations for CFS."""
 
+import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
 
 from cfs.exceptions import DocumentNotFoundError, DocumentOperationError, InvalidDocumentIDError
 
@@ -828,3 +831,214 @@ def close_document(category_path: Path, doc_id: int) -> Path:
             raise DocumentOperationError("delete old document", str(e))
 
     return new_path
+
+
+# =============================================================================
+# Frontmatter Support
+# =============================================================================
+
+FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def parse_frontmatter(content: str) -> Tuple[Dict[str, Any], str]:
+    """Parse YAML frontmatter from document content.
+
+    Args:
+        content: Full document content.
+
+    Returns:
+        Tuple of (frontmatter_dict, body_content).
+        If no frontmatter, returns ({}, content).
+    """
+    match = FRONTMATTER_PATTERN.match(content)
+    if not match:
+        return {}, content
+
+    frontmatter_text = match.group(1)
+    body = content[match.end() :]
+
+    try:
+        frontmatter = yaml.safe_load(frontmatter_text)
+        if frontmatter is None:
+            frontmatter = {}
+        return frontmatter, body
+    except yaml.YAMLError:
+        # If YAML parsing fails, treat as no frontmatter
+        return {}, content
+
+
+def add_frontmatter(content: str, frontmatter: Dict[str, Any]) -> str:
+    """Add or update frontmatter in document content.
+
+    Args:
+        content: Full document content (may already have frontmatter).
+        frontmatter: Dictionary of frontmatter values to set.
+
+    Returns:
+        Document content with updated frontmatter.
+    """
+    existing_frontmatter, body = parse_frontmatter(content)
+
+    # Merge frontmatter (new values override existing)
+    merged = {**existing_frontmatter, **frontmatter}
+
+    if not merged:
+        return body
+
+    # Generate YAML frontmatter
+    frontmatter_yaml = yaml.dump(merged, default_flow_style=False, allow_unicode=True)
+
+    return f"---\n{frontmatter_yaml}---\n{body}"
+
+
+def remove_frontmatter_key(content: str, key: str) -> str:
+    """Remove a specific key from frontmatter.
+
+    Args:
+        content: Full document content.
+        key: Key to remove from frontmatter.
+
+    Returns:
+        Document content with key removed from frontmatter.
+    """
+    frontmatter, body = parse_frontmatter(content)
+
+    if key in frontmatter:
+        del frontmatter[key]
+
+    if not frontmatter:
+        return body
+
+    frontmatter_yaml = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True)
+    return f"---\n{frontmatter_yaml}---\n{body}"
+
+
+def get_github_issue_number(content: str) -> Optional[int]:
+    """Extract GitHub issue number from document frontmatter.
+
+    Args:
+        content: Full document content.
+
+    Returns:
+        GitHub issue number if present, None otherwise.
+    """
+    frontmatter, _ = parse_frontmatter(content)
+    issue_num = frontmatter.get("github_issue")
+
+    if issue_num is not None:
+        try:
+            return int(issue_num)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def set_github_issue_number(content: str, issue_number: int) -> str:
+    """Set GitHub issue number in document frontmatter.
+
+    Args:
+        content: Full document content.
+        issue_number: GitHub issue number to set.
+
+    Returns:
+        Document content with github_issue in frontmatter.
+    """
+    return add_frontmatter(content, {"github_issue": issue_number})
+
+
+def remove_github_issue_link(content: str) -> str:
+    """Remove GitHub issue link from document frontmatter.
+
+    Args:
+        content: Full document content.
+
+    Returns:
+        Document content without github_issue in frontmatter.
+    """
+    return remove_frontmatter_key(content, "github_issue")
+
+
+def extract_document_sections(content: str) -> Dict[str, str]:
+    """Extract sections from a CFS document.
+
+    Args:
+        content: Full document content (with or without frontmatter).
+
+    Returns:
+        Dictionary with keys: 'title', 'working_directory', 'contents', 'acceptance_criteria'.
+        Missing sections will have empty string values.
+    """
+    _, body = parse_frontmatter(content)
+
+    sections = {
+        "title": "",
+        "working_directory": "",
+        "contents": "",
+        "acceptance_criteria": "",
+    }
+
+    lines = body.split("\n")
+    current_section = None
+    section_content: List[str] = []
+
+    for line in lines:
+        # Check for title (h1)
+        if line.startswith("# ") and not sections["title"]:
+            sections["title"] = line[2:].strip()
+            continue
+
+        # Check for section headers (h2)
+        if line.startswith("## "):
+            # Save previous section content
+            if current_section and section_content:
+                sections[current_section] = "\n".join(section_content).strip()
+                section_content = []
+
+            header = line[3:].strip().lower()
+            if "working" in header and "directory" in header:
+                current_section = "working_directory"
+            elif header == "contents":
+                current_section = "contents"
+            elif "acceptance" in header and "criteria" in header:
+                current_section = "acceptance_criteria"
+            else:
+                current_section = None
+            continue
+
+        # Accumulate content for current section
+        if current_section:
+            section_content.append(line)
+
+    # Save last section
+    if current_section and section_content:
+        sections[current_section] = "\n".join(section_content).strip()
+
+    return sections
+
+
+def build_github_issue_body(content: str) -> str:
+    """Build GitHub issue body from CFS document content.
+
+    Extracts Contents and Acceptance Criteria sections.
+
+    Args:
+        content: Full CFS document content.
+
+    Returns:
+        Markdown body suitable for GitHub issue.
+    """
+    sections = extract_document_sections(content)
+
+    parts = []
+
+    if sections["contents"]:
+        parts.append(sections["contents"])
+
+    if sections["acceptance_criteria"]:
+        if parts:
+            parts.append("")  # Empty line separator
+        parts.append("## Acceptance Criteria")
+        parts.append("")
+        parts.append(sections["acceptance_criteria"])
+
+    return "\n".join(parts)
