@@ -143,12 +143,17 @@ handoff_app = typer.Typer(
     help="Create and manage handoff documents for agent transitions",
     invoke_without_command=True,
 )
+gh_app = typer.Typer(
+    name="gh",
+    help="GitHub integration - sync CFS documents with GitHub issues",
+)
 
 # Register subcommand groups
 app.add_typer(instructions_app, name="instructions")
 app.add_typer(instructions_app, name="instr")  # Short alias for instructions
 app.add_typer(instructions_app, name="i")  # Shorter alias for instructions
 app.add_typer(rules_app, name="rules")
+app.add_typer(gh_app, name="gh")
 instructions_app.add_typer(handoff_app, name="handoff")
 
 
@@ -2153,6 +2158,261 @@ description: {description}
     content = "\n".join(sections)
 
     return frontmatter + content
+
+
+# =============================================================================
+# GitHub Integration Commands
+# =============================================================================
+
+
+@gh_app.command("sync")
+def gh_sync(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be done without making changes"
+    ),
+) -> None:
+    """Synchronize CFS documents with GitHub issues.
+
+    This command performs bidirectional sync:
+    - Creates CFS documents for new GitHub issues
+    - Creates GitHub issues for new CFS documents
+    - Syncs status changes (close/complete)
+    - Detects and helps resolve content conflicts
+    """
+    from cfs.github import (
+        GitHubAuthError,
+        check_gh_authenticated,
+        check_gh_installed,
+        list_issues,
+    )
+    from cfs.sync import (
+        build_sync_plan,
+        display_sync_results,
+        display_sync_status,
+        execute_sync_plan,
+    )
+
+    # Check prerequisites
+    if not check_gh_installed():
+        console.print(
+            "[red]Error: GitHub CLI (gh) is not installed.[/red]\n"
+            "[yellow]Please install it from https://cli.github.com/[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    if not check_gh_authenticated():
+        console.print(
+            "[red]Error: GitHub CLI is not authenticated.[/red]\n"
+            "[yellow]Please run 'gh auth login' first.[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    # Find CFS root
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    # Get GitHub issues
+    console.print("[dim]Fetching GitHub issues...[/dim]")
+    try:
+        github_issues = list_issues(state="all", limit=500)
+    except GitHubAuthError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Found {len(github_issues)} GitHub issues[/dim]")
+
+    # Build sync plan
+    console.print("[dim]Building sync plan...[/dim]")
+    plan = build_sync_plan(cfs_root, github_issues)
+
+    # Display status
+    display_sync_status(console, plan)
+
+    if not plan.has_actions():
+        console.print("\n[green]Everything is in sync![/green]")
+        return
+
+    # Execute sync
+    if dry_run:
+        console.print("\n[yellow]Dry run mode - no changes will be made[/yellow]")
+
+    results = execute_sync_plan(console, cfs_root, plan, dry_run=dry_run)
+
+    # Display results
+    console.print()
+    display_sync_results(console, results)
+
+
+@gh_app.command("status")
+def gh_status() -> None:
+    """Show sync status between CFS documents and GitHub issues."""
+    from cfs.github import (
+        GitHubAuthError,
+        check_gh_authenticated,
+        check_gh_installed,
+        list_issues,
+    )
+    from cfs.sync import build_sync_plan, display_sync_status
+
+    # Check prerequisites
+    if not check_gh_installed():
+        console.print(
+            "[red]Error: GitHub CLI (gh) is not installed.[/red]\n"
+            "[yellow]Please install it from https://cli.github.com/[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    if not check_gh_authenticated():
+        console.print(
+            "[red]Error: GitHub CLI is not authenticated.[/red]\n"
+            "[yellow]Please run 'gh auth login' first.[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    # Find CFS root
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    # Get GitHub issues
+    console.print("[dim]Fetching GitHub issues...[/dim]")
+    try:
+        github_issues = list_issues(state="all", limit=500)
+    except GitHubAuthError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    # Build sync plan and display status
+    plan = build_sync_plan(cfs_root, github_issues)
+    display_sync_status(console, plan)
+
+
+@gh_app.command("link")
+def gh_link(
+    category: str = typer.Argument(..., help="Category of the CFS document"),
+    doc_id: int = typer.Argument(..., help="ID of the CFS document"),
+    issue_number: int = typer.Argument(..., help="GitHub issue number to link to"),
+) -> None:
+    """Manually link a CFS document to a GitHub issue.
+
+    This adds a github_issue field to the document's frontmatter.
+    """
+    from cfs import documents
+    from cfs.github import add_labels, ensure_label_exists, get_cfs_label_for_category
+
+    # Validate category
+    if category not in core.VALID_CATEGORIES:
+        console.print(f"[red]Error: Invalid category '{category}'[/red]")
+        console.print(
+            f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    # Find CFS root
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    category_path = core.get_category_path(cfs_root, category)
+
+    # Find the document
+    doc_path = documents.find_document_by_id(category_path, doc_id)
+    if doc_path is None:
+        console.print(f"[red]Error: Document {doc_id} not found in {category}[/red]")
+        raise typer.Exit(1)
+
+    # Read and update document
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+
+        # Check if already linked
+        existing_issue = documents.get_github_issue_number(content)
+        if existing_issue is not None:
+            console.print(
+                f"[yellow]Document is already linked to GitHub #{existing_issue}[/yellow]"
+            )
+            if existing_issue == issue_number:
+                return
+            console.print(f"[yellow]Updating link to #{issue_number}[/yellow]")
+
+        # Add/update the link
+        updated_content = documents.set_github_issue_number(content, issue_number)
+        doc_path.write_text(updated_content, encoding="utf-8")
+
+        # Add CFS label to GitHub issue
+        label = get_cfs_label_for_category(category)
+        ensure_label_exists(label)
+        add_labels(issue_number, [label])
+
+        console.print(f"[green]Linked {category}/{doc_id} to GitHub #{issue_number}[/green]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@gh_app.command("unlink")
+def gh_unlink(
+    category: str = typer.Argument(..., help="Category of the CFS document"),
+    doc_id: int = typer.Argument(..., help="ID of the CFS document"),
+) -> None:
+    """Remove the GitHub issue link from a CFS document.
+
+    This removes the github_issue field from the document's frontmatter.
+    """
+    from cfs import documents
+
+    # Validate category
+    if category not in core.VALID_CATEGORIES:
+        console.print(f"[red]Error: Invalid category '{category}'[/red]")
+        console.print(
+            f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    # Find CFS root
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    category_path = core.get_category_path(cfs_root, category)
+
+    # Find the document
+    doc_path = documents.find_document_by_id(category_path, doc_id)
+    if doc_path is None:
+        console.print(f"[red]Error: Document {doc_id} not found in {category}[/red]")
+        raise typer.Exit(1)
+
+    # Read and update document
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+
+        # Check if linked
+        existing_issue = documents.get_github_issue_number(content)
+        if existing_issue is None:
+            console.print(
+                f"[yellow]Document {category}/{doc_id} is not linked to any GitHub issue[/yellow]"
+            )
+            return
+
+        # Remove the link
+        updated_content = documents.remove_github_issue_link(content)
+        doc_path.write_text(updated_content, encoding="utf-8")
+
+        console.print(
+            f"[green]Removed GitHub link from {category}/{doc_id} (was #{existing_issue})[/green]"
+        )
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
 
 def main() -> None:
