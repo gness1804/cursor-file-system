@@ -43,7 +43,13 @@ src/cfs/
 ## Contents
 
 [User content here]
+
+## Acceptance criteria
+
+[Criteria for completion]
 ```
+
+The skeleton is generated in `cli.py:229` (`initial_content_lines`).
 
 ### CLI Command Pattern
 Commands are organized under `cfs instructions {category}` (aliases: `instr`, `i`):
