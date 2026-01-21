@@ -1,3 +1,6 @@
+---
+github_issue: 13
+---
 # GitHub Issues Integration Plan
 
 ## Overview

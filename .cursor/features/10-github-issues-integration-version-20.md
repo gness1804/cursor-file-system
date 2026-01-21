@@ -1,3 +1,6 @@
+---
+github_issue: 6
+---
 # Github Issues Integration Version 20
 
 ## Working directory

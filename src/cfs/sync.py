@@ -213,7 +213,7 @@ def build_sync_plan(cfs_root: Path, github_issues: List[GitHubIssue]) -> SyncPla
             continue
 
         cfs_is_done = is_cfs_document_done(doc_path)
-        github_is_closed = github_issue.state == "closed"
+        github_is_closed = github_issue.state.lower() == "closed"
 
         # Check for status mismatch
         if cfs_is_done and not github_is_closed:
@@ -294,7 +294,7 @@ def build_sync_plan(cfs_root: Path, github_issues: List[GitHubIssue]) -> SyncPla
 
     # Find unlinked GitHub issues (need to create CFS documents)
     for issue in github_issues:
-        if issue.number not in linked_github_numbers and issue.state == "open":
+        if issue.number not in linked_github_numbers and issue.state.lower() == "open":
             # Unlinked open issue -> create CFS document
             category = get_category_from_github_issue(issue)
             plan.add(

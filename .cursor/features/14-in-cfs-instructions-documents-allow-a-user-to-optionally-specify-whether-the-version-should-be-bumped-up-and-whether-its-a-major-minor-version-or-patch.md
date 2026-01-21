@@ -1,3 +1,6 @@
+---
+github_issue: 8
+---
 # In Cfs Instructions Documents Allow A User To Optionally Specify Whether The Version Should Be Bumped Up And Whether Its A Major Minor Version Or Patch
 
 ## Working directory

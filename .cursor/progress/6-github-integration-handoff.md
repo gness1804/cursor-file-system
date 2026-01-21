@@ -1,3 +1,6 @@
+---
+github_issue: 17
+---
 # GitHub Issues Integration - Handoff Document
 
 ## Current State

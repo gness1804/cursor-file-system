@@ -1,3 +1,6 @@
+---
+github_issue: 9
+---
 # Provide More Options For Editing An Instruction File On Creation
 
 ## Working directory
