@@ -22,4 +22,6 @@ This initiative will need a plan to complete, as it would take multiple steps. W
 - There should be bidirectional syncing and functionality. For instance, when I close the CFS issue on the command line and then run the sync command, it closes the corresponding GitHub issue, and vice versa. 
 - For new GitHub issues, when you run the sync command, the application will ask the user which category the issue should fit into (e.g., features, bugs, etc.). 
 - The GitHub issue should have essentially the same text as the CFS issue, the Markdown which contains the description and acceptance criteria related to the particular issue. 
-- The AI agent will create a plan of steps to tackle, which need to be signed off on before any work is started. 
+- The AI agent will create a plan of steps to tackle, which need to be signed off on before any work is started.
+
+<!-- DONE -->
