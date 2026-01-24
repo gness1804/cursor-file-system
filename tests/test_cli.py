@@ -690,3 +690,170 @@ class TestTreeFormatting:
 
         formatted = _format_tree_entry(file_path, file_path.name)
         assert formatted == file_path.name
+
+
+class TestExecCommand:
+    """Tests for `cfs exec` command."""
+
+    def test_exec_outputs_content(self, runner, tmp_path):
+        """Test that exec outputs document content."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure with a document
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            doc_content = "# Test Bug\n\nThis is a test bug document."
+            (bugs_dir / "1-test-bug.md").write_text(doc_content)
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--force"])
+
+            assert result.exit_code == 0
+            assert "Test Bug" in result.output
+            assert "Custom Instructions" in result.output
+
+    def test_exec_with_confirmation_declined(self, runner, tmp_path):
+        """Test that exec aborts when confirmation is declined."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure with a document
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1"], input="n\n")
+
+            assert result.exit_code == 1
+            assert "cancelled" in result.output.lower()
+
+    def test_exec_document_not_found(self, runner, tmp_path):
+        """Test exec with non-existent document ID."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure without any documents
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+
+            result = runner.invoke(app, ["exec", "bugs", "999", "--force"])
+
+            assert result.exit_code == 1
+
+    def test_exec_invalid_category(self, runner, tmp_path):
+        """Test exec with invalid category."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+
+            result = runner.invoke(app, ["exec", "invalid", "1", "--force"])
+
+            assert result.exit_code == 1
+
+    def test_exec_claude_flag_confirmation_message(self, runner, tmp_path):
+        """Test that --claude flag shows appropriate confirmation message."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure with a document
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--claude"], input="n\n")
+
+            assert "Claude Code session" in result.output
+
+    @patch("shutil.which")
+    def test_exec_claude_not_installed(self, mock_which, runner, tmp_path):
+        """Test exec --claude when Claude Code is not installed."""
+        mock_which.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure with a document
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--claude", "--force"])
+
+            assert result.exit_code == 1
+            assert "Claude Code CLI not found" in result.output
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_exec_claude_launches_session(self, mock_which, mock_run, runner, tmp_path):
+        """Test that exec --claude launches Claude Code with correct prompt."""
+        mock_which.return_value = "/usr/local/bin/claude"
+        mock_run.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure with a document
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            doc_content = "# Test Bug\n\nThis is a test bug."
+            (bugs_dir / "1-test-bug.md").write_text(doc_content)
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--claude", "--force"])
+
+            assert result.exit_code == 0
+            assert "Starting Claude Code session" in result.output
+
+            # Verify subprocess.run was called with correct arguments
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+            assert call_args[0] == "/usr/local/bin/claude"
+            assert "Test Bug" in call_args[1]
+            assert "cfs i bugs complete 1" in call_args[1]
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_exec_claude_includes_completion_instruction(
+        self, mock_which, mock_run, runner, tmp_path
+    ):
+        """Test that the Claude prompt includes the completion instruction."""
+        mock_which.return_value = "/usr/local/bin/claude"
+        mock_run.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            features_dir = cursor_dir / "features"
+            features_dir.mkdir()
+
+            (features_dir / "5-new-feature.md").write_text("# New Feature\n\nDetails")
+
+            result = runner.invoke(app, ["exec", "features", "5", "--claude", "--force"])
+
+            assert result.exit_code == 0
+
+            call_args = mock_run.call_args[0][0]
+            prompt = call_args[1]
+
+            # Check prompt contains the completion instruction
+            assert "cfs i features complete 5" in prompt
+            assert "offer to close the corresponding CFS document" in prompt

@@ -905,6 +905,51 @@ def view_all(
             console.print(table)
 
 
+def _launch_claude_code(content: str, category: str, doc_id: int) -> None:
+    """Launch Claude Code with document content as the initial prompt.
+
+    Args:
+        content: The document content to pass to Claude Code.
+        category: The category of the document (for the completion instruction).
+        doc_id: The document ID (for the completion instruction).
+    """
+    import shutil
+    import subprocess
+
+    # Check if claude command is available
+    claude_path = shutil.which("claude")
+    if claude_path is None:
+        console.print(
+            "[red]Error: Claude Code CLI not found. "
+            "Please install it from https://claude.ai/code[/red]"
+        )
+        raise typer.Abort()
+
+    # Build the prompt with the document content and completion instruction
+    completion_instruction = (
+        f"\n\n---\n\n"
+        f"When you are finished with this work, offer to close the corresponding CFS "
+        f"document that was passed to you to start this session. The command for this is: "
+        f"`cfs i {category} complete {doc_id}`"
+    )
+
+    prompt = (
+        f"Work on the following task from the {category} category (ID: {doc_id}):\n\n"
+        f"{content}"
+        f"{completion_instruction}"
+    )
+
+    console.print("[cyan]Starting Claude Code session...[/cyan]")
+
+    try:
+        # Launch Claude Code with the prompt
+        subprocess.run([claude_path, prompt], check=True)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Claude Code exited with error code {e.returncode}[/red]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Claude Code session interrupted[/yellow]")
+
+
 @app.command("exec")
 def exec_document(
     category: str = typer.Argument(..., help="Category name"),
@@ -923,16 +968,23 @@ def exec_document(
         "--next",
         help="Execute the next (first) document in the category",
     ),
+    claude: bool = typer.Option(
+        False,
+        "--claude",
+        "-c",
+        help="Start a Claude Code session with this document",
+    ),
 ) -> None:
     """Execute instructions from a document by outputting them as custom instructions text.
 
     This command reads a document and outputs its content as custom instructions that can be
-    given to a Cursor agent. In future versions, this may integrate directly with Cursor agents.
+    given to a Cursor agent. Use --claude to start a Claude Code session directly.
 
     Examples:
         cfs exec bugs 1          # Execute document with ID 1 in bugs category
         cfs exec bugs next       # Execute the next document in bugs category
         cfs exec bugs --next     # Same as above, using flag
+        cfs exec bugs 1 --claude # Start Claude Code session with document
     """
     from cfs.documents import (
         find_document_by_id,
@@ -1002,42 +1054,47 @@ def exec_document(
         console.print(f"\n[bold]Document:[/bold] {title}")
         console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
         console.print()
-        if not typer.confirm(
-            "Execute this document? (This will output the instructions text)",
-            default=False,
-        ):
+        if claude:
+            confirm_msg = "Start a Claude Code session with this document?"
+        else:
+            confirm_msg = "Execute this document? (This will output the instructions text)"
+        if not typer.confirm(confirm_msg, default=False):
             console.print("[yellow]Execution cancelled[/yellow]")
             raise typer.Abort()
 
-    # Output the document content as custom instructions
-    console.print()
-    console.print("[bold cyan]--- Custom Instructions ---[/bold cyan]")
-    console.print()
-    console.print(content)
-    console.print()
-    console.print("[bold cyan]--- End Custom Instructions ---[/bold cyan]")
-    console.print()
+    if claude:
+        # Launch Claude Code with the document content
+        _launch_claude_code(content, category, target_doc_id)
+    else:
+        # Output the document content as custom instructions
+        console.print()
+        console.print("[bold cyan]--- Custom Instructions ---[/bold cyan]")
+        console.print()
+        console.print(content)
+        console.print()
+        console.print("[bold cyan]--- End Custom Instructions ---[/bold cyan]")
+        console.print()
 
-    # Copy to clipboard
-    try:
-        import pyperclip
+        # Copy to clipboard
+        try:
+            import pyperclip
 
-        pyperclip.copy(content)
-        console.print("[green]✓ Instructions copied to clipboard[/green]")
-    except ImportError:
-        console.print(
-            "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
-        )
-        console.print(
-            "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
-        )
-    except Exception as e:
-        console.print(
-            f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
-        )
-        console.print(
-            "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
-        )
+            pyperclip.copy(content)
+            console.print("[green]✓ Instructions copied to clipboard[/green]")
+        except ImportError:
+            console.print(
+                "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
+            )
+            console.print(
+                "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+            )
+        except Exception as e:
+            console.print(
+                f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
+            )
+            console.print(
+                "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+            )
 
 
 @instructions_app.command("next")
