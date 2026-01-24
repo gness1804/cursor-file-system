@@ -1100,6 +1100,13 @@ def exec_document(
 @instructions_app.command("next")
 def next_document(
     category: str = typer.Argument(..., help="Category name"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-y",
+        "--yes",
+        help="Skip confirmation and work on issue immediately",
+    ),
 ) -> None:
     """Find and work on the next unresolved issue in a category.
 
@@ -1162,9 +1169,10 @@ def next_document(
     console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
     console.print()
 
-    if not typer.confirm("Would you like to work on this issue?", default=True):
-        console.print("[yellow]Cancelled[/yellow]")
-        raise typer.Abort()
+    if not force:
+        if not typer.confirm("Would you like to work on this issue?", default=True):
+            console.print("[yellow]Cancelled[/yellow]")
+            raise typer.Abort()
 
     # Get document content
     try:
@@ -1330,7 +1338,15 @@ cfs instructions handoff pickup
 
 
 @handoff_app.command("pickup")
-def pickup_handoff() -> None:
+def pickup_handoff(
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-y",
+        "--yes",
+        help="Skip confirmation and pick up handoff immediately",
+    ),
+) -> None:
     """Pick up the first incomplete handoff document from the progress folder.
 
     This command finds the first unresolved handoff document (not marked as DONE)
@@ -1391,9 +1407,10 @@ def pickup_handoff() -> None:
     console.print(f"[dim]Category: progress, ID: {target_doc_id}[/dim]")
     console.print()
 
-    if not typer.confirm("Would you like to pick up this handoff document?", default=True):
-        console.print("[yellow]Cancelled[/yellow]")
-        raise typer.Abort()
+    if not force:
+        if not typer.confirm("Would you like to pick up this handoff document?", default=True):
+            console.print("[yellow]Cancelled[/yellow]")
+            raise typer.Abort()
 
     # Get document content
     try:
@@ -1729,6 +1746,12 @@ def create_rule(
         "-c",
         help="Create comprehensive base rules document",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Skip confirmation prompts (overwrite existing files)",
+    ),
 ) -> None:
     """Create a new Cursor rules document."""
     from cfs import documents
@@ -1748,7 +1771,7 @@ def create_rule(
     is_first_rule = len(existing_rules) == 0
 
     # If no rules exist and user didn't specify comprehensive, offer it
-    if is_first_rule and not comprehensive and name is None:
+    if is_first_rule and not comprehensive and name is None and not force:
         console.print(
             "[yellow]No rules files found. This will be your base rules document.[/yellow]",
         )
@@ -1788,9 +1811,10 @@ def create_rule(
         console.print(
             f"[yellow]Warning: Rule file '{file_path}' already exists[/yellow]",
         )
-        if not typer.confirm("Overwrite existing file?", default=False):
-            console.print("[green]Cancelled[/green]")
-            raise typer.Abort()
+        if not force:
+            if not typer.confirm("Overwrite existing file?", default=False):
+                console.print("[green]Cancelled[/green]")
+                raise typer.Abort()
 
     # Detect repository type for boilerplate
     repo_type = _detect_repo_type(cfs_root)
