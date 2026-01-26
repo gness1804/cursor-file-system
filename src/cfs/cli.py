@@ -950,6 +950,141 @@ def _launch_claude_code(content: str, category: str, doc_id: int) -> None:
         console.print("\n[yellow]Claude Code session interrupted[/yellow]")
 
 
+def _launch_gemini(content: str, category: str, doc_id: int) -> None:
+    """Launch Gemini CLI with document content as the initial prompt.
+
+    Args:
+        content: The document content to pass to Gemini.
+        category: The category of the document (for the completion instruction).
+        doc_id: The document ID (for the completion instruction).
+    """
+    import shutil
+    import subprocess
+
+    # Check if gemini command is available
+    gemini_path = shutil.which("gemini")
+    if gemini_path is None:
+        console.print(
+            "[red]Error: Gemini CLI not found. "
+            "Please install it with: npm install -g @google/gemini-cli[/red]"
+        )
+        raise typer.Abort()
+
+    # Build the prompt with the document content and completion instruction
+    completion_instruction = (
+        f"\n\n---\n\n"
+        f"When you are finished with this work, offer to close the corresponding CFS "
+        f"document that was passed to you to start this session. The command for this is: "
+        f"`cfs i {category} complete {doc_id}`"
+    )
+
+    prompt = (
+        f"Work on the following task from the {category} category (ID: {doc_id}):\n\n"
+        f"{content}"
+        f"{completion_instruction}"
+    )
+
+    console.print("[cyan]Starting Gemini CLI session...[/cyan]")
+
+    try:
+        # Launch Gemini CLI with the prompt
+        subprocess.run([gemini_path, prompt], check=True)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Gemini CLI exited with error code {e.returncode}[/red]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Gemini CLI session interrupted[/yellow]")
+
+
+def _launch_cursor_agent(content: str, category: str, doc_id: int) -> None:
+    """Launch Cursor Agent CLI with document content as the initial prompt.
+
+    Args:
+        content: The document content to pass to Cursor Agent.
+        category: The category of the document (for the completion instruction).
+        doc_id: The document ID (for the completion instruction).
+    """
+    import shutil
+    import subprocess
+
+    # Check if agent command is available
+    agent_path = shutil.which("agent")
+    if agent_path is None:
+        console.print(
+            "[red]Error: Cursor Agent CLI not found. "
+            "Please install it from: https://cursor.com/cli[/red]"
+        )
+        raise typer.Abort()
+
+    # Build the prompt with the document content and completion instruction
+    completion_instruction = (
+        f"\n\n---\n\n"
+        f"When you are finished with this work, offer to close the corresponding CFS "
+        f"document that was passed to you to start this session. The command for this is: "
+        f"`cfs i {category} complete {doc_id}`"
+    )
+
+    prompt = (
+        f"Work on the following task from the {category} category (ID: {doc_id}):\n\n"
+        f"{content}"
+        f"{completion_instruction}"
+    )
+
+    console.print("[cyan]Starting Cursor Agent CLI session...[/cyan]")
+
+    try:
+        # Launch Cursor Agent CLI with the prompt using 'agent chat'
+        subprocess.run([agent_path, "chat", prompt], check=True)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]Cursor Agent CLI exited with error code {e.returncode}[/red]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cursor Agent CLI session interrupted[/yellow]")
+
+
+def _launch_codex(content: str, category: str, doc_id: int) -> None:
+    """Launch OpenAI Codex CLI with document content as the initial prompt.
+
+    Args:
+        content: The document content to pass to Codex.
+        category: The category of the document (for the completion instruction).
+        doc_id: The document ID (for the completion instruction).
+    """
+    import shutil
+    import subprocess
+
+    # Check if codex command is available
+    codex_path = shutil.which("codex")
+    if codex_path is None:
+        console.print(
+            "[red]Error: OpenAI Codex CLI not found. "
+            "Please install it with: npm install -g @openai/codex[/red]"
+        )
+        raise typer.Abort()
+
+    # Build the prompt with the document content and completion instruction
+    completion_instruction = (
+        f"\n\n---\n\n"
+        f"When you are finished with this work, offer to close the corresponding CFS "
+        f"document that was passed to you to start this session. The command for this is: "
+        f"`cfs i {category} complete {doc_id}`"
+    )
+
+    prompt = (
+        f"Work on the following task from the {category} category (ID: {doc_id}):\n\n"
+        f"{content}"
+        f"{completion_instruction}"
+    )
+
+    console.print("[cyan]Starting OpenAI Codex CLI session...[/cyan]")
+
+    try:
+        # Launch Codex CLI with the prompt
+        subprocess.run([codex_path, prompt], check=True)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]OpenAI Codex CLI exited with error code {e.returncode}[/red]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]OpenAI Codex CLI session interrupted[/yellow]")
+
+
 @app.command("exec")
 def exec_document(
     category: str = typer.Argument(..., help="Category name"),
@@ -974,17 +1109,38 @@ def exec_document(
         "-c",
         help="Start a Claude Code session with this document",
     ),
+    gemini: bool = typer.Option(
+        False,
+        "--gemini",
+        "-g",
+        help="Start a Gemini CLI session with this document",
+    ),
+    cursor: bool = typer.Option(
+        False,
+        "--cursor",
+        "-u",
+        help="Start a Cursor Agent CLI session with this document",
+    ),
+    codex: bool = typer.Option(
+        False,
+        "--codex",
+        "-x",
+        help="Start an OpenAI Codex CLI session with this document",
+    ),
 ) -> None:
     """Execute instructions from a document by outputting them as custom instructions text.
 
     This command reads a document and outputs its content as custom instructions that can be
-    given to a Cursor agent. Use --claude to start a Claude Code session directly.
+    given to a Cursor agent. Use AI service flags to start a session directly.
 
     Examples:
         cfs exec bugs 1          # Execute document with ID 1 in bugs category
         cfs exec bugs next       # Execute the next document in bugs category
         cfs exec bugs --next     # Same as above, using flag
         cfs exec bugs 1 --claude # Start Claude Code session with document
+        cfs exec bugs 1 --gemini # Start Gemini CLI session with document
+        cfs exec bugs 1 --cursor # Start Cursor Agent CLI session with document
+        cfs exec bugs 1 --codex  # Start OpenAI Codex CLI session with document
     """
     from cfs.documents import (
         find_document_by_id,
@@ -992,6 +1148,21 @@ def exec_document(
         get_next_document_id,
         parse_document_id_from_string,
     )
+
+    # Check for mutual exclusivity of AI service flags
+    ai_flags = [
+        ("--claude", claude),
+        ("--gemini", gemini),
+        ("--cursor", cursor),
+        ("--codex", codex),
+    ]
+    selected_flags = [name for name, value in ai_flags if value]
+    if len(selected_flags) > 1:
+        console.print(
+            f"[red]Error: Only one AI service flag can be used at a time. "
+            f"You specified: {', '.join(selected_flags)}[/red]"
+        )
+        raise typer.Abort()
 
     try:
         # Find CFS root
@@ -1049,13 +1220,24 @@ def exec_document(
         console.print(f"[red]Error reading document: {e}[/red]")
         raise typer.Abort()
 
+    # Determine which AI service is selected (if any)
+    ai_service = None
+    if claude:
+        ai_service = "Claude Code"
+    elif gemini:
+        ai_service = "Gemini CLI"
+    elif cursor:
+        ai_service = "Cursor Agent CLI"
+    elif codex:
+        ai_service = "OpenAI Codex CLI"
+
     # Show confirmation (unless --force)
     if not force:
         console.print(f"\n[bold]Document:[/bold] {title}")
         console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
         console.print()
-        if claude:
-            confirm_msg = "Start a Claude Code session with this document?"
+        if ai_service:
+            confirm_msg = f"Start a {ai_service} session with this document?"
         else:
             confirm_msg = "Execute this document? (This will output the instructions text)"
         if not typer.confirm(confirm_msg, default=False):
@@ -1065,6 +1247,15 @@ def exec_document(
     if claude:
         # Launch Claude Code with the document content
         _launch_claude_code(content, category, target_doc_id)
+    elif gemini:
+        # Launch Gemini CLI with the document content
+        _launch_gemini(content, category, target_doc_id)
+    elif cursor:
+        # Launch Cursor Agent CLI with the document content
+        _launch_cursor_agent(content, category, target_doc_id)
+    elif codex:
+        # Launch OpenAI Codex CLI with the document content
+        _launch_codex(content, category, target_doc_id)
     else:
         # Output the document content as custom instructions
         console.print()

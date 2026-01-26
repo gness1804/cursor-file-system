@@ -857,3 +857,219 @@ class TestExecCommand:
             # Check prompt contains the completion instruction
             assert "cfs i features complete 5" in prompt
             assert "offer to close the corresponding CFS document" in prompt
+
+    def test_exec_mutual_exclusivity_error(self, runner, tmp_path):
+        """Test that using multiple AI flags raises an error."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            # Create CFS structure with a document
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--claude", "--gemini", "--force"])
+
+            assert result.exit_code == 1
+            assert "Only one AI service flag can be used at a time" in result.output
+            assert "--claude" in result.output
+            assert "--gemini" in result.output
+
+    def test_exec_gemini_flag_confirmation_message(self, runner, tmp_path):
+        """Test that --gemini flag shows appropriate confirmation message."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--gemini"], input="n\n")
+
+            assert "Gemini CLI session" in result.output
+
+    def test_exec_cursor_flag_confirmation_message(self, runner, tmp_path):
+        """Test that --cursor flag shows appropriate confirmation message."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--cursor"], input="n\n")
+
+            assert "Cursor Agent CLI session" in result.output
+
+    def test_exec_codex_flag_confirmation_message(self, runner, tmp_path):
+        """Test that --codex flag shows appropriate confirmation message."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--codex"], input="n\n")
+
+            assert "OpenAI Codex CLI session" in result.output
+
+    @patch("shutil.which")
+    def test_exec_gemini_not_installed(self, mock_which, runner, tmp_path):
+        """Test exec --gemini when Gemini CLI is not installed."""
+        mock_which.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--gemini", "--force"])
+
+            assert result.exit_code == 1
+            assert "Gemini CLI not found" in result.output
+
+    @patch("shutil.which")
+    def test_exec_cursor_not_installed(self, mock_which, runner, tmp_path):
+        """Test exec --cursor when Cursor Agent CLI is not installed."""
+        mock_which.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--cursor", "--force"])
+
+            assert result.exit_code == 1
+            assert "Cursor Agent CLI not found" in result.output
+
+    @patch("shutil.which")
+    def test_exec_codex_not_installed(self, mock_which, runner, tmp_path):
+        """Test exec --codex when OpenAI Codex CLI is not installed."""
+        mock_which.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            (bugs_dir / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--codex", "--force"])
+
+            assert result.exit_code == 1
+            assert "OpenAI Codex CLI not found" in result.output
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_exec_gemini_launches_session(self, mock_which, mock_run, runner, tmp_path):
+        """Test that exec --gemini launches Gemini CLI with correct prompt."""
+        mock_which.return_value = "/usr/local/bin/gemini"
+        mock_run.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            doc_content = "# Test Bug\n\nThis is a test bug."
+            (bugs_dir / "1-test-bug.md").write_text(doc_content)
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--gemini", "--force"])
+
+            assert result.exit_code == 0
+            assert "Starting Gemini CLI session" in result.output
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+            assert call_args[0] == "/usr/local/bin/gemini"
+            assert "Test Bug" in call_args[1]
+            assert "cfs i bugs complete 1" in call_args[1]
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_exec_cursor_launches_session(self, mock_which, mock_run, runner, tmp_path):
+        """Test that exec --cursor launches Cursor Agent CLI with correct prompt."""
+        mock_which.return_value = "/usr/local/bin/agent"
+        mock_run.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            doc_content = "# Test Bug\n\nThis is a test bug."
+            (bugs_dir / "1-test-bug.md").write_text(doc_content)
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--cursor", "--force"])
+
+            assert result.exit_code == 0
+            assert "Starting Cursor Agent CLI session" in result.output
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+            assert call_args[0] == "/usr/local/bin/agent"
+            assert call_args[1] == "chat"
+            assert "Test Bug" in call_args[2]
+            assert "cfs i bugs complete 1" in call_args[2]
+
+    @patch("subprocess.run")
+    @patch("shutil.which")
+    def test_exec_codex_launches_session(self, mock_which, mock_run, runner, tmp_path):
+        """Test that exec --codex launches OpenAI Codex CLI with correct prompt."""
+        mock_which.return_value = "/usr/local/bin/codex"
+        mock_run.return_value = None
+
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            doc_content = "# Test Bug\n\nThis is a test bug."
+            (bugs_dir / "1-test-bug.md").write_text(doc_content)
+
+            result = runner.invoke(app, ["exec", "bugs", "1", "--codex", "--force"])
+
+            assert result.exit_code == 0
+            assert "Starting OpenAI Codex CLI session" in result.output
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+            assert call_args[0] == "/usr/local/bin/codex"
+            assert "Test Bug" in call_args[1]
+            assert "cfs i bugs complete 1" in call_args[1]
