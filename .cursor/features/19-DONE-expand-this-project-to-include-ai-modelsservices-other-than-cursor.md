@@ -18,4 +18,6 @@ We will try to have a similar functionality and logic with these services, but m
 
 ## Acceptance criteria
 
-- The ability to run cfs exec and start a session in each of the AI services listed above. 
+- The ability to run cfs exec and start a session in each of the AI services listed above.
+
+<!-- DONE -->
