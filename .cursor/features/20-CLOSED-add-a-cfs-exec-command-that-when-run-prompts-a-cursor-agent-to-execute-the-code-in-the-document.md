@@ -14,3 +14,5 @@ Example - you run the command `cfs exec bugs 1` and the agent executes the instr
 
 
 ## Acceptance criteria
+
+<!-- CLOSED -->
