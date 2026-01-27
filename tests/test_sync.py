@@ -1,5 +1,9 @@
 """Tests for the sync module."""
 
+from unittest.mock import MagicMock, patch
+
+from rich.console import Console
+
 from cfs.github import GitHubIssue
 from cfs.sync import (
     SYNC_CATEGORIES,
@@ -7,6 +11,7 @@ from cfs.sync import (
     SyncItem,
     SyncPlan,
     build_sync_plan,
+    execute_sync_plan,
     generate_diff,
     get_category_from_github_issue,
     is_cfs_document_done,
@@ -441,3 +446,52 @@ class TestBuildSyncPlan:
         # Should not create CFS doc for closed issues
         create_actions = [a for a in plan.get_actions() if a.action == SyncAction.CREATE_CFS]
         assert len(create_actions) == 0
+
+
+class TestExecuteSyncPlan:
+    """Tests for execute_sync_plan function."""
+
+    @patch("cfs.sync.prompt_conflict_resolution")
+    def test_content_conflict_in_non_interactive_mode(
+        self,
+        mock_prompt_conflict_resolution,
+        tmp_path,
+    ):
+        """Test content conflict in non-interactive mode fails gracefully."""
+        # Create a mock console that is not interactive
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = False
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+
+        # Create a sync plan with a content conflict
+        issue = GitHubIssue(number=1, title="Test", body="gh body", state="open", labels=[], url="")
+        item = SyncItem(
+            action=SyncAction.CONTENT_CONFLICT,
+            category="features",
+            cfs_doc_id=1,
+            cfs_doc_path=cfs_root / "1-test.md",
+            github_issue=issue,
+            cfs_content="cfs content",
+            github_content="gh content",
+            title="Test",
+        )
+        plan = SyncPlan(items=[item])
+
+        # Execute the plan
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        # Assert that an error was reported and no conflict was resolved
+        assert results["errors"] == 1
+        assert results["resolved_conflicts"] == 0
+        assert results["skipped"] == 0
+
+        # Assert that the prompt was not called
+        mock_prompt_conflict_resolution.assert_not_called()
+
+        # Assert that a relevant error message was printed
+        mock_console.print.assert_called_once()
+        call_args = mock_console.print.call_args[0][0]
+        assert "Error: Content conflict" in call_args
+        assert "Run in an interactive shell to resolve" in call_args

@@ -650,6 +650,15 @@ def execute_sync_plan(
                     results["completed_cfs"] += 1
 
             elif item.action == SyncAction.CONTENT_CONFLICT:
+                if not console.is_interactive:
+                    console.print(
+                        f"[red]Error: Content conflict for '{item.title}' "
+                        f"({item.category}/{item.cfs_doc_id} vs GitHub #{item.github_issue.number}). "
+                        "Run in an interactive shell to resolve.[/red]"
+                    )
+                    results["errors"] += 1
+                    continue
+
                 if dry_run:
                     console.print(
                         "[dim]Dry run: conflict detected. No prompt shown; no changes made.[/dim]"
