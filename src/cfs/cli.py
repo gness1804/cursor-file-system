@@ -930,7 +930,7 @@ def _launch_claude_code(content: str, category: str, doc_id: int) -> None:
         f"\n\n---\n\n"
         f"When you are finished with this work, offer to close the corresponding CFS "
         f"document that was passed to you to start this session. The command for this is: "
-        f"`cfs i {category} complete {doc_id}`"
+        f"`cfs i {category} complete {doc_id} --force`"
     )
 
     prompt = (
@@ -975,7 +975,7 @@ def _launch_gemini(content: str, category: str, doc_id: int) -> None:
         f"\n\n---\n\n"
         f"When you are finished with this work, offer to close the corresponding CFS "
         f"document that was passed to you to start this session. The command for this is: "
-        f"`cfs i {category} complete {doc_id}`"
+        f"`cfs i {category} complete {doc_id} --force`"
     )
 
     prompt = (
@@ -1020,7 +1020,7 @@ def _launch_cursor_agent(content: str, category: str, doc_id: int) -> None:
         f"\n\n---\n\n"
         f"When you are finished with this work, offer to close the corresponding CFS "
         f"document that was passed to you to start this session. The command for this is: "
-        f"`cfs i {category} complete {doc_id}`"
+        f"`cfs i {category} complete {doc_id} --force`"
     )
 
     prompt = (
@@ -1065,7 +1065,7 @@ def _launch_codex(content: str, category: str, doc_id: int) -> None:
         f"\n\n---\n\n"
         f"When you are finished with this work, offer to close the corresponding CFS "
         f"document that was passed to you to start this session. The command for this is: "
-        f"`cfs i {category} complete {doc_id}`"
+        f"`cfs i {category} complete {doc_id} --force`"
     )
 
     prompt = (

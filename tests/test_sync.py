@@ -281,6 +281,73 @@ class TestBuildSyncPlan:
         # Should have no actions since content matches
         actions = [a for a in plan.get_actions() if a.action != SyncAction.CONTENT_CONFLICT]
         assert len(actions) == 0
+        conflict_actions = [
+            a for a in plan.get_actions() if a.action == SyncAction.CONTENT_CONFLICT
+        ]
+        assert len(conflict_actions) == 0
+
+    def test_linked_in_sync_with_normalization(self, tmp_path):
+        """Test sync plan ignores whitespace and heading case differences."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        features = cfs_root / "features"
+        features.mkdir()
+
+        doc = features / "1-test-feature.md"
+        doc.write_text(
+            "---\ngithub_issue: 42\n---\n"
+            "# Test Feature\n\n"
+            "## Contents\n\n"
+            "Some content.\n\n"
+            "## Acceptance criteria\n\n"
+            "- Item one\n"
+        )
+
+        github_issues = [
+            GitHubIssue(
+                number=42,
+                title="Test Feature",
+                body="Some content.\r\n\r\n## Acceptance Criteria\r\n\r\n- Item one\r\n",
+                state="open",
+                labels=["cfs:features"],
+                url="",
+            )
+        ]
+        plan = build_sync_plan(cfs_root, github_issues)
+
+        conflict_actions = [
+            a for a in plan.get_actions() if a.action == SyncAction.CONTENT_CONFLICT
+        ]
+        assert len(conflict_actions) == 0
+
+    def test_content_conflict_detected_for_actual_changes(self, tmp_path):
+        """Test sync plan flags conflicts when content meaningfully differs."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        features = cfs_root / "features"
+        features.mkdir()
+
+        doc = features / "1-test-feature.md"
+        doc.write_text(
+            "---\ngithub_issue: 42\n---\n" "# Test Feature\n\n" "## Contents\n\n" "Some content.\n"
+        )
+
+        github_issues = [
+            GitHubIssue(
+                number=42,
+                title="Test Feature",
+                body="Different content.",
+                state="open",
+                labels=["cfs:features"],
+                url="",
+            )
+        ]
+        plan = build_sync_plan(cfs_root, github_issues)
+
+        conflict_actions = [
+            a for a in plan.get_actions() if a.action == SyncAction.CONTENT_CONFLICT
+        ]
+        assert len(conflict_actions) == 1
 
     def test_status_mismatch_cfs_done(self, tmp_path):
         """Test sync plan detects when CFS is done but GitHub is open."""

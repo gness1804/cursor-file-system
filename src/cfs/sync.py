@@ -1,6 +1,7 @@
 """Sync logic between CFS documents and GitHub issues."""
 
 import difflib
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -146,6 +147,90 @@ def get_linked_documents(cfs_root: Path) -> Dict[int, Tuple[str, int, Path]]:
     return linked
 
 
+_ACCEPTANCE_HEADER_RE = re.compile(r"^#{2,}\s*acceptance\s*criteria\s*$", re.IGNORECASE)
+
+
+def _normalize_text_for_compare(text: str) -> str:
+    """Normalize text for stable comparisons."""
+    if not text:
+        return ""
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [line.rstrip() for line in normalized.split("\n")]
+    while lines and lines[0] == "":
+        lines.pop(0)
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
+def _split_github_issue_body(body: str, normalize: bool = False) -> Tuple[str, str]:
+    """Split a GitHub issue body into contents and acceptance criteria sections."""
+    if normalize:
+        text = _normalize_text_for_compare(body)
+    else:
+        text = body.replace("\r\n", "\n").replace("\r", "\n") if body else ""
+
+    lines = text.split("\n") if text else []
+    contents_lines: List[str] = []
+    acceptance_lines: List[str] = []
+    in_acceptance = False
+
+    for line in lines:
+        if _ACCEPTANCE_HEADER_RE.match(line.strip()):
+            in_acceptance = True
+            continue
+        if in_acceptance:
+            acceptance_lines.append(line)
+        else:
+            contents_lines.append(line)
+
+    contents = "\n".join(contents_lines)
+    acceptance = "\n".join(acceptance_lines)
+
+    if normalize:
+        return (
+            _normalize_text_for_compare(contents),
+            _normalize_text_for_compare(acceptance),
+        )
+
+    return contents, acceptance
+
+
+def _build_canonical_issue_body(contents: str, acceptance_criteria: str) -> str:
+    """Build a canonical GitHub issue body from section content."""
+    parts: List[str] = []
+    if contents:
+        parts.append(contents)
+    if acceptance_criteria:
+        if parts:
+            parts.append("")
+        parts.append("## Acceptance Criteria")
+        parts.append("")
+        parts.append(acceptance_criteria)
+    return "\n".join(parts)
+
+
+def _build_canonical_cfs_body(cfs_content: str) -> str:
+    """Build a canonical comparable body from CFS content."""
+    cfs_body = build_github_issue_body(cfs_content) if cfs_content else ""
+    return _normalize_text_for_compare(cfs_body)
+
+
+def _build_canonical_github_body(github_body: str) -> str:
+    """Build a canonical comparable body from GitHub content."""
+    contents, acceptance = _split_github_issue_body(github_body or "", normalize=True)
+    canonical = _build_canonical_issue_body(contents, acceptance)
+    return _normalize_text_for_compare(canonical)
+
+
+def _get_comparable_bodies(cfs_content: str, github_body: str) -> Tuple[str, str]:
+    """Return canonical bodies for comparing CFS and GitHub content."""
+    return (
+        _build_canonical_cfs_body(cfs_content),
+        _build_canonical_github_body(github_body),
+    )
+
+
 def is_cfs_document_done(doc_path: Path) -> bool:
     """Check if a CFS document is marked as done or closed.
 
@@ -244,17 +329,20 @@ def build_sync_plan(cfs_root: Path, github_issues: List[GitHubIssue]) -> SyncPla
             # Both open - check for content differences
             try:
                 cfs_content = doc_path.read_text(encoding="utf-8")
-                cfs_body = build_github_issue_body(cfs_content)
                 cfs_sections = extract_document_sections(cfs_content)
                 cfs_title = cfs_sections["title"]
 
-                # Compare content (normalize whitespace)
-                cfs_body_normalized = cfs_body.strip()
-                github_body_normalized = (github_issue.body or "").strip()
+                # Compare content (normalize whitespace and headings)
+                cfs_body_normalized, github_body_normalized = _get_comparable_bodies(
+                    cfs_content,
+                    github_issue.body or "",
+                )
 
                 # Only flag as conflict if bodies differ, or if titles differ AND both have titles
                 body_differs = cfs_body_normalized != github_body_normalized
-                title_differs = cfs_title and cfs_title != github_issue.title
+                title_differs = (
+                    bool(cfs_title) and cfs_title.strip() != (github_issue.title or "").strip()
+                )
 
                 if body_differs or title_differs:
                     plan.add(
@@ -336,7 +424,7 @@ def generate_diff(local_content: str, remote_content: str) -> str:
         lineterm="",
     )
 
-    return "".join(diff)
+    return "\n".join(diff)
 
 
 def display_diff(console: Console, local_content: str, remote_content: str) -> None:
@@ -353,7 +441,7 @@ def display_diff(console: Console, local_content: str, remote_content: str) -> N
         console.print("[green]Contents are identical.[/green]")
         return
 
-    # Color the diff output
+    # Color the diff output with a clear legend
     lines = []
     for line in diff.split("\n"):
         if line.startswith("+++"):
@@ -363,13 +451,27 @@ def display_diff(console: Console, local_content: str, remote_content: str) -> N
         elif line.startswith("@@"):
             lines.append(f"[cyan]{line}[/cyan]")
         elif line.startswith("+"):
-            lines.append(f"[green]{line}[/green]")
+            lines.append(f"[blue]{line}[/blue]")
         elif line.startswith("-"):
             lines.append(f"[red]{line}[/red]")
         else:
-            lines.append(line)
+            lines.append(f"[dim]{line}[/dim]" if line else line)
 
-    console.print(Panel("\n".join(lines), title="Diff", border_style="yellow"))
+    diff_panel = Panel("\n".join(lines), title="Diff", border_style="yellow")
+    console.print(
+        Panel(
+            "\n".join(
+                [
+                    "Legend: [blue]+ CFS (local)[/blue], [red]- GitHub (remote)[/red].",
+                    "Normalization: line endings, trailing whitespace, edge blank lines,",
+                    "and Acceptance Criteria heading are standardized for comparison.",
+                ]
+            ),
+            title="Comparison Notes",
+            border_style="cyan",
+        )
+    )
+    console.print(diff_panel)
 
 
 def prompt_category_selection(console: Console, title: str) -> Optional[str]:
@@ -421,8 +523,19 @@ def prompt_conflict_resolution(
     console.print(f"  GitHub: #{item.github_issue.number}")
 
     # Build comparable content
-    cfs_body = build_github_issue_body(item.cfs_content) if item.cfs_content else ""
-    github_body = item.github_content or ""
+    cfs_body, github_body = _get_comparable_bodies(
+        item.cfs_content or "",
+        item.github_content or "",
+    )
+
+    cfs_title = extract_document_sections(item.cfs_content or "").get("title", "")
+    github_title = item.github_issue.title if item.github_issue else ""
+    if cfs_title.strip() != (github_title or "").strip():
+        console.print(
+            "\n[yellow]Title differs:[/yellow] "
+            f"[blue]CFS:[/blue] {cfs_title or '(empty)'} | "
+            f"[red]GitHub:[/red] {github_title or '(empty)'}"
+        )
 
     display_diff(console, cfs_body, github_body)
 
@@ -537,18 +650,21 @@ def execute_sync_plan(
                     results["completed_cfs"] += 1
 
             elif item.action == SyncAction.CONTENT_CONFLICT:
-                resolution = prompt_conflict_resolution(console, item)
-
-                if resolution is None:
-                    console.print("[yellow]Sync aborted by user.[/yellow]")
-                    return results
-                elif resolution == "skip":
-                    results["skipped"] += 1
-                    continue
-
                 if dry_run:
-                    console.print(f"[dim]Would resolve conflict using {resolution}[/dim]")
+                    console.print(
+                        "[dim]Dry run: conflict detected. No prompt shown; no changes made.[/dim]"
+                    )
+                    results["skipped"] += 1
                 else:
+                    resolution = prompt_conflict_resolution(console, item)
+
+                    if resolution is None:
+                        console.print("[yellow]Sync aborted by user.[/yellow]")
+                        return results
+                    elif resolution == "skip":
+                        results["skipped"] += 1
+                        continue
+
                     _resolve_conflict(console, cfs_root, item, resolution)
                     results["resolved_conflicts"] += 1
 
@@ -602,26 +718,14 @@ def _create_cfs_from_github(
 
     # Parse GitHub body for contents and acceptance criteria
     if issue.body:
-        body_lines = issue.body.split("\n")
-        in_acceptance = False
-        contents_lines = []
-        acceptance_lines = []
-
-        for line in body_lines:
-            if line.strip().lower().startswith("## acceptance"):
-                in_acceptance = True
-                continue
-            if in_acceptance:
-                acceptance_lines.append(line)
-            else:
-                contents_lines.append(line)
-
-        content_lines.extend(contents_lines)
+        contents_text, acceptance_text = _split_github_issue_body(issue.body, normalize=False)
+        if contents_text:
+            content_lines.extend(contents_text.split("\n"))
         content_lines.append("")
         content_lines.append("## Acceptance criteria")
         content_lines.append("")
-        if acceptance_lines:
-            content_lines.extend(acceptance_lines)
+        if acceptance_text:
+            content_lines.extend(acceptance_text.split("\n"))
 
     content = "\n".join(content_lines)
 
@@ -735,26 +839,17 @@ def _resolve_conflict(
 
         # Parse GitHub body
         if item.github_content:
-            body_lines = item.github_content.split("\n")
-            in_acceptance = False
-            contents_lines = []
-            acceptance_lines = []
-
-            for line in body_lines:
-                if line.strip().lower().startswith("## acceptance"):
-                    in_acceptance = True
-                    continue
-                if in_acceptance:
-                    acceptance_lines.append(line)
-                else:
-                    contents_lines.append(line)
-
-            content_lines.extend(contents_lines)
+            contents_text, acceptance_text = _split_github_issue_body(
+                item.github_content,
+                normalize=False,
+            )
+            if contents_text:
+                content_lines.extend(contents_text.split("\n"))
             content_lines.append("")
             content_lines.append("## Acceptance criteria")
             content_lines.append("")
-            if acceptance_lines:
-                content_lines.extend(acceptance_lines)
+            if acceptance_text:
+                content_lines.extend(acceptance_text.split("\n"))
 
         content = "\n".join(content_lines)
 
