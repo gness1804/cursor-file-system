@@ -1019,7 +1019,8 @@ def extract_document_sections(content: str) -> Dict[str, str]:
 def build_github_issue_body(content: str) -> str:
     """Build GitHub issue body from CFS document content.
 
-    Extracts Contents and Acceptance Criteria sections.
+    Extracts Contents and Acceptance Criteria sections. If neither is present,
+    falls back to the unstructured document body.
 
     Args:
         content: Full CFS document content.
@@ -1041,4 +1042,18 @@ def build_github_issue_body(content: str) -> str:
         parts.append("")
         parts.append(sections["acceptance_criteria"])
 
-    return "\n".join(parts)
+    if parts:
+        return "\n".join(parts)
+
+    _, body = parse_frontmatter(content)
+    lines = body.splitlines()
+
+    while lines and not lines[0].strip():
+        lines.pop(0)
+
+    if lines and lines[0].startswith("# "):
+        lines.pop(0)
+        while lines and not lines[0].strip():
+            lines.pop(0)
+
+    return "\n".join(lines).strip()
