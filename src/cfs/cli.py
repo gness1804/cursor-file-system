@@ -905,6 +905,16 @@ def view_all(
             console.print(table)
 
 
+# Top-level view command (shortcut for `cfs i view -i`)
+@app.command("view")
+def view_incomplete() -> None:
+    """View all incomplete documents across all categories.
+
+    This is a shortcut for 'cfs i view -i'.
+    """
+    view_all(category=None, incomplete_only=True)
+
+
 def _launch_claude_code(content: str, category: str, doc_id: int) -> None:
     """Launch Claude Code with document content as the initial prompt.
 
