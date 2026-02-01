@@ -419,6 +419,29 @@ class TestViewCommand:
 
             assert result.exit_code == 0
 
+    def test_view_shortcut_shows_incomplete_only(self, runner, temp_cfs):
+        """Test that `cfs view` shows only incomplete documents (shortcut for `cfs i view -i`)."""
+        tmp_path, cursor_dir = temp_cfs
+
+        # Create incomplete and complete documents
+        (cursor_dir / "bugs" / "1-incomplete-bug.md").write_text("content")
+        (cursor_dir / "bugs" / "2-DONE-completed-bug.md").write_text("content")
+        (cursor_dir / "features" / "1-incomplete-feature.md").write_text("content")
+        (cursor_dir / "features" / "2-CLOSED-closed-feature.md").write_text("content")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["view"])
+
+            assert result.exit_code == 0
+            # Should show incomplete documents
+            assert "incomplete-bug" in result.stdout.lower()
+            assert "incomplete-feature" in result.stdout.lower()
+            # Should NOT show completed/closed documents
+            assert "completed-bug" not in result.stdout.lower()
+            assert "closed-feature" not in result.stdout.lower()
+            # Should indicate "Incomplete Only" in the title
+            assert "incomplete only" in result.stdout.lower()
+
 
 class TestRulesCreateCommand:
     """Tests for `cfs rules create` command."""
