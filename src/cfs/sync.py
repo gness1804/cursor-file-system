@@ -813,7 +813,10 @@ def _resolve_conflict(
         # Update GitHub with CFS content
         sections = extract_document_sections(item.cfs_content)
         body = build_github_issue_body(item.cfs_content)
-        update_issue(item.github_issue.number, title=sections["title"], body=body)
+        title = sections["title"].strip()
+        if not title:
+            title = None
+        update_issue(item.github_issue.number, title=title, body=body)
         console.print(f"[green]Updated GitHub #{item.github_issue.number} with CFS content[/green]")
     elif resolution == "remote":
         # Update CFS with GitHub content

@@ -452,6 +452,52 @@ class TestExecuteSyncPlan:
     """Tests for execute_sync_plan function."""
 
     @patch("cfs.sync.prompt_conflict_resolution")
+    @patch("cfs.sync.update_issue")
+    def test_content_conflict_local_with_missing_title(
+        self,
+        mock_update_issue,
+        mock_prompt_conflict_resolution,
+        tmp_path,
+    ):
+        """Test resolving conflict locally when CFS title is missing."""
+        mock_prompt_conflict_resolution.return_value = "local"
+        mock_update_issue.return_value = GitHubIssue(
+            number=1, title="Existing", body="Updated body", state="open", labels=[], url=""
+        )
+
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = True
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+
+        issue = GitHubIssue(
+            number=1, title="Existing", body="gh body", state="open", labels=[], url=""
+        )
+        item = SyncItem(
+            action=SyncAction.CONTENT_CONFLICT,
+            category="refactors",
+            cfs_doc_id=1,
+            cfs_doc_path=cfs_root / "1-test.md",
+            github_issue=issue,
+            cfs_content="---\n"
+            "github_issue: 1\n"
+            "---\n"
+            "Unstructured content outside sections.\n",
+            github_content="gh content",
+            title="Existing",
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        assert results["resolved_conflicts"] == 1
+        mock_update_issue.assert_called_once()
+        _, kwargs = mock_update_issue.call_args
+        assert kwargs["title"] is None
+        assert "Unstructured content outside sections." in kwargs["body"]
+
+    @patch("cfs.sync.prompt_conflict_resolution")
     def test_content_conflict_in_non_interactive_mode(
         self,
         mock_prompt_conflict_resolution,
