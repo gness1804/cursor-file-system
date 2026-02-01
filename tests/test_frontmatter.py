@@ -359,6 +359,21 @@ Just the content.
 
         assert body == ""
 
+    def test_build_fallback_body(self):
+        """Test fallback when no structured sections exist."""
+        content = """# Issue Title
+
+This content lives outside the expected sections.
+
+- It should still transfer
+- Even without headers
+"""
+        body = build_github_issue_body(content)
+
+        assert "This content lives outside the expected sections." in body
+        assert "- It should still transfer" in body
+        assert "# Issue Title" not in body
+
     def test_build_preserves_markdown(self):
         """Test that markdown formatting is preserved."""
         content = """# Title
