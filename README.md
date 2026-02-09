@@ -408,6 +408,24 @@ The generated file includes:
 
 - `cfs rules create [--name NAME] [--edit] [--comprehensive]` - Create rules document
 
+### GitHub Integration Commands
+
+Bidirectional sync between CFS documents and GitHub issues:
+
+- `cfs gh sync [--dry-run] [--include-category CAT] [--exclude-category CAT]` - Sync CFS documents with GitHub issues
+- `cfs gh status [--include-category CAT] [--exclude-category CAT]` - Show sync status
+- `cfs gh link <category> <id> <issue_number>` - Manually link a CFS document to a GitHub issue
+- `cfs gh unlink <category> <id>` - Remove GitHub issue link from a CFS document
+- `cfs gh purge-excluded [--dry-run] [--include-category CAT] [--exclude-category CAT]` - Delete GitHub issues for excluded categories and unlink CFS documents
+
+**Category exclusion:** By default, the `tmp` and `security` categories are excluded from GitHub sync. The `security` category is excluded to prevent potential vulnerability details from being exposed in public GitHub issues.
+
+- Use `--include-category` (`-ic`) to force-include a default-excluded category (e.g., `--include-category security`)
+- Use `--exclude-category` (`-ec`) to exclude additional categories (e.g., `--exclude-category progress`)
+- Both flags can be used multiple times
+
+**Purging excluded issues:** If you have existing GitHub issues for categories you now want excluded, use `cfs gh purge-excluded` to permanently delete those GitHub issues while preserving the local CFS documents.
+
 ### Valid Categories
 
 - `bugs` - Bug investigation and fix instructions

@@ -212,3 +212,25 @@ class TestLabelHelpers:
         assert get_category_from_cfs_label("bug") is None
         assert get_category_from_cfs_label("enhancement") is None
         assert get_category_from_cfs_label("CFS:features") is None  # Case sensitive
+
+
+class TestDeleteIssue:
+    """Tests for delete_issue function."""
+
+    @patch("cfs.github.check_gh_authenticated", return_value=True)
+    @patch("cfs.github._run_gh_command")
+    def test_delete_issue_calls_gh(self, mock_run, mock_auth):
+        """Test that delete_issue calls gh with correct args."""
+        from cfs.github import delete_issue
+
+        mock_run.return_value = MagicMock(returncode=0)
+        delete_issue(42)
+        mock_run.assert_called_once_with(["issue", "delete", "42", "--yes"])
+
+    @patch("cfs.github.check_gh_authenticated", return_value=False)
+    def test_delete_issue_requires_auth(self, mock_auth):
+        """Test that delete_issue raises when not authenticated."""
+        from cfs.github import GitHubAuthError, delete_issue
+
+        with pytest.raises(GitHubAuthError):
+            delete_issue(42)

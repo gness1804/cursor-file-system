@@ -1,7 +1,7 @@
 """Main CLI entry point for the CFS tool."""
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich import box
@@ -2453,6 +2453,18 @@ def gh_sync(
     dry_run: bool = typer.Option(
         False, "--dry-run", "-n", help="Show what would be done without making changes"
     ),
+    include_categories: Optional[List[str]] = typer.Option(
+        None,
+        "--include-category",
+        "-ic",
+        help="Force-include a category that is excluded by default (e.g. security). Can be used multiple times.",
+    ),
+    exclude_categories: Optional[List[str]] = typer.Option(
+        None,
+        "--exclude-category",
+        "-ec",
+        help="Exclude an additional category from sync. Can be used multiple times.",
+    ),
 ) -> None:
     """Synchronize CFS documents with GitHub issues.
 
@@ -2461,6 +2473,10 @@ def gh_sync(
     - Creates GitHub issues for new CFS documents
     - Syncs status changes (close/complete)
     - Detects and helps resolve content conflicts
+
+    By default, the 'tmp' and 'security' categories are excluded from sync.
+    Use --include-category to override default exclusions, or --exclude-category
+    to exclude additional categories.
     """
     from cfs.github import (
         GitHubAuthError,
@@ -2470,10 +2486,27 @@ def gh_sync(
     )
     from cfs.sync import (
         build_sync_plan,
+        compute_sync_categories,
         display_sync_results,
         display_sync_status,
         execute_sync_plan,
     )
+
+    # Compute effective sync categories
+    inc = set(include_categories) if include_categories else None
+    exc = set(exclude_categories) if exclude_categories else None
+    sync_cats = compute_sync_categories(inc, exc)
+
+    # Validate user-provided categories
+    for cat_list in [include_categories, exclude_categories]:
+        if cat_list:
+            for cat in cat_list:
+                if cat not in core.VALID_CATEGORIES:
+                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
+                    console.print(
+                        f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
+                    )
+                    raise typer.Exit(1)
 
     # Check prerequisites
     if not check_gh_installed():
@@ -2497,6 +2530,10 @@ def gh_sync(
         handle_cfs_error(e)
         raise typer.Exit(1)
 
+    # Show which categories are being synced if non-default
+    if inc or exc:
+        console.print(f"[dim]Syncing categories: {', '.join(sorted(sync_cats))}[/dim]")
+
     # Get GitHub issues
     console.print("[dim]Fetching GitHub issues...[/dim]")
     try:
@@ -2509,7 +2546,7 @@ def gh_sync(
 
     # Build sync plan
     console.print("[dim]Building sync plan...[/dim]")
-    plan = build_sync_plan(cfs_root, github_issues)
+    plan = build_sync_plan(cfs_root, github_issues, sync_categories=sync_cats)
 
     # Display status
     display_sync_status(console, plan)
@@ -2530,15 +2567,49 @@ def gh_sync(
 
 
 @gh_app.command("status")
-def gh_status() -> None:
-    """Show sync status between CFS documents and GitHub issues."""
+def gh_status(
+    include_categories: Optional[List[str]] = typer.Option(
+        None,
+        "--include-category",
+        "-ic",
+        help="Force-include a category that is excluded by default (e.g. security). Can be used multiple times.",
+    ),
+    exclude_categories: Optional[List[str]] = typer.Option(
+        None,
+        "--exclude-category",
+        "-ec",
+        help="Exclude an additional category from sync. Can be used multiple times.",
+    ),
+) -> None:
+    """Show sync status between CFS documents and GitHub issues.
+
+    By default, the 'tmp' and 'security' categories are excluded from sync.
+    Use --include-category to override default exclusions, or --exclude-category
+    to exclude additional categories.
+    """
     from cfs.github import (
         GitHubAuthError,
         check_gh_authenticated,
         check_gh_installed,
         list_issues,
     )
-    from cfs.sync import build_sync_plan, display_sync_status
+    from cfs.sync import build_sync_plan, compute_sync_categories, display_sync_status
+
+    # Compute effective sync categories
+    inc = set(include_categories) if include_categories else None
+    exc = set(exclude_categories) if exclude_categories else None
+    sync_cats = compute_sync_categories(inc, exc)
+
+    # Validate user-provided categories
+    for cat_list in [include_categories, exclude_categories]:
+        if cat_list:
+            for cat in cat_list:
+                if cat not in core.VALID_CATEGORIES:
+                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
+                    console.print(
+                        f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
+                    )
+                    raise typer.Exit(1)
 
     # Check prerequisites
     if not check_gh_installed():
@@ -2562,6 +2633,10 @@ def gh_status() -> None:
         handle_cfs_error(e)
         raise typer.Exit(1)
 
+    # Show which categories are being synced if non-default
+    if inc or exc:
+        console.print(f"[dim]Syncing categories: {', '.join(sorted(sync_cats))}[/dim]")
+
     # Get GitHub issues
     console.print("[dim]Fetching GitHub issues...[/dim]")
     try:
@@ -2571,7 +2646,7 @@ def gh_status() -> None:
         raise typer.Exit(1)
 
     # Build sync plan and display status
-    plan = build_sync_plan(cfs_root, github_issues)
+    plan = build_sync_plan(cfs_root, github_issues, sync_categories=sync_cats)
     display_sync_status(console, plan)
 
 
@@ -2696,6 +2771,171 @@ def gh_unlink(
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(1)
+
+
+@gh_app.command("purge-excluded")
+def gh_purge_excluded(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be done without making changes"
+    ),
+    include_categories: Optional[List[str]] = typer.Option(
+        None,
+        "--include-category",
+        "-ic",
+        help="Force-include a category (won't be purged). Can be used multiple times.",
+    ),
+    exclude_categories: Optional[List[str]] = typer.Option(
+        None,
+        "--exclude-category",
+        "-ec",
+        help="Exclude an additional category (will be purged). Can be used multiple times.",
+    ),
+) -> None:
+    """Delete GitHub issues for excluded categories and unlink CFS documents.
+
+    This finds all CFS documents in excluded categories that are linked to
+    GitHub issues, deletes those issues from GitHub, and removes the link
+    from the CFS documents (preserving the documents themselves).
+
+    By default, excluded categories are 'tmp' and 'security'.
+    Use --include-category and --exclude-category to customize.
+    """
+    from cfs.github import (
+        check_gh_authenticated,
+        check_gh_installed,
+        delete_issue,
+    )
+    from cfs.sync import compute_sync_categories
+
+    # Compute which categories are excluded (i.e. what to purge)
+    inc = set(include_categories) if include_categories else None
+    exc = set(exclude_categories) if exclude_categories else None
+    sync_cats = compute_sync_categories(inc, exc)
+    excluded_cats = core.VALID_CATEGORIES - sync_cats
+
+    # Validate user-provided categories
+    for cat_list in [include_categories, exclude_categories]:
+        if cat_list:
+            for cat in cat_list:
+                if cat not in core.VALID_CATEGORIES:
+                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
+                    console.print(
+                        f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
+                    )
+                    raise typer.Exit(1)
+
+    if not excluded_cats:
+        console.print("[yellow]No categories are excluded. Nothing to purge.[/yellow]")
+        return
+
+    # Check prerequisites
+    if not check_gh_installed():
+        console.print(
+            "[red]Error: GitHub CLI (gh) is not installed.[/red]\n"
+            "[yellow]Please install it from https://cli.github.com/[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    if not check_gh_authenticated():
+        console.print(
+            "[red]Error: GitHub CLI is not authenticated.[/red]\n"
+            "[yellow]Please run 'gh auth login' first.[/yellow]"
+        )
+        raise typer.Exit(1)
+
+    # Find CFS root
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    console.print(
+        f"[yellow]Purging GitHub issues for excluded categories: "
+        f"{', '.join(sorted(excluded_cats))}[/yellow]"
+    )
+
+    # Find linked documents in excluded categories
+    from cfs.documents import (
+        get_github_issue_number,
+        list_documents,
+        remove_github_issue_link,
+    )
+
+    purge_items = []  # List of (category, doc_id, doc_path, issue_number)
+    for category in sorted(excluded_cats):
+        docs = list_documents(cfs_root, category)
+        if category not in docs:
+            continue
+        for doc in docs[category]:
+            doc_path = doc["path"]
+            try:
+                content = doc_path.read_text(encoding="utf-8")
+                issue_num = get_github_issue_number(content)
+                if issue_num is not None:
+                    purge_items.append((category, doc["id"], doc_path, issue_num))
+            except (OSError, IOError):
+                continue
+
+    if not purge_items:
+        console.print("[green]No linked documents found in excluded categories.[/green]")
+        return
+
+    # Display what will be purged
+    from rich.table import Table
+
+    table = Table(title="Issues to Purge")
+    table.add_column("Category", style="cyan")
+    table.add_column("Doc ID", style="green")
+    table.add_column("GitHub Issue", style="red")
+
+    for category, doc_id, doc_path, issue_num in purge_items:
+        table.add_row(category, str(doc_id), f"#{issue_num}")
+
+    console.print(table)
+
+    if dry_run:
+        console.print(
+            f"\n[yellow]Dry run: would delete {len(purge_items)} GitHub issue(s) "
+            f"and unlink the corresponding CFS documents.[/yellow]"
+        )
+        return
+
+    # Confirm before proceeding (this is destructive)
+    console.print(
+        f"\n[bold red]This will permanently delete {len(purge_items)} GitHub issue(s).[/bold red]"
+    )
+    confirm = typer.confirm("Are you sure you want to proceed?")
+    if not confirm:
+        console.print("[yellow]Aborted.[/yellow]")
+        return
+
+    # Execute purge
+    deleted = 0
+    errors = 0
+    for category, doc_id, doc_path, issue_num in purge_items:
+        try:
+            # Delete the GitHub issue
+            delete_issue(issue_num)
+
+            # Unlink the CFS document
+            content = doc_path.read_text(encoding="utf-8")
+            updated_content = remove_github_issue_link(content)
+            doc_path.write_text(updated_content, encoding="utf-8")
+
+            console.print(
+                f"[green]Deleted GitHub #{issue_num} and unlinked {category}/{doc_id}[/green]"
+            )
+            deleted += 1
+        except Exception as e:
+            console.print(f"[red]Error purging {category}/{doc_id} (#{issue_num}): {e}[/red]")
+            errors += 1
+
+    console.print(f"\n[green]Purged {deleted} issue(s).[/green]", end="")
+    if errors:
+        console.print(f" [red]{errors} error(s).[/red]")
+    else:
+        console.print()
 
 
 def main() -> None:

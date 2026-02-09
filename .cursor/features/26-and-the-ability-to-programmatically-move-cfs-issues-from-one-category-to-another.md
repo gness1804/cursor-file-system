@@ -1,3 +1,6 @@
+---
+github_issue: 33
+---
 # And The Ability To Programmatically Move Cfs Issues From One Category To Another
 
 ## Working directory
