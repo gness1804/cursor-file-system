@@ -12,3 +12,5 @@ github_issue: 31
 There needs to be a Security folder category. This is an important category that was left out during the initial development of CFS.
 
 ## Acceptance criteria
+
+<!-- DONE -->
