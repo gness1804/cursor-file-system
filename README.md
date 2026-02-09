@@ -337,6 +337,7 @@ $ cfs tree
     ├── progress
     │   └── 1-handoff-phase-2.md
     ├── qa
+    ├── security
     ├── tmp
     ├── rules
     │   └── project-rules.mdc
@@ -416,6 +417,7 @@ The generated file includes:
 - `docs` - Documentation creation instructions
 - `progress` - Progress tracking and handoff documents
 - `qa` - Testing and QA documents
+- `security` - Security-related documents
 - `tmp` - Temporary files for Cursor agent use
 - `rules` - Rules used by Cursor (automatically read by Cursor agents)
 
@@ -438,6 +440,7 @@ The CFS organizes documents into a `.cursor` directory with the following struct
 ├── docs/                      # Documentation instructions
 ├── progress/                  # Progress tracking
 ├── qa/                        # Testing and QA
+├── security/                  # Security documents
 └── tmp/                       # Temporary files
 ```
 
@@ -667,7 +670,7 @@ The project uses:
 
 ### Issue: "Invalid category" error
 
-**Solution**: Use one of the valid categories: `bugs`, `features`, `research`, `refactors`, `docs`, `progress`, `qa`, `tmp`, or `rules`.
+**Solution**: Use one of the valid categories: `bugs`, `features`, `research`, `refactors`, `docs`, `progress`, `qa`, `security`, `tmp`, or `rules`.
 
 ### Issue: Editor doesn't open
 

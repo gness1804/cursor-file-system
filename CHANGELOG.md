@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of cursor-instructions-cli
 - Core CLI functionality with Typer framework
 - Document CRUD operations (Create, Read, Update, Delete)
-- Support for multiple document categories (bugs, features, research, refactors, docs, progress, qa, tmp)
+- Support for multiple document categories (bugs, features, research, refactors, docs, progress, qa, security, tmp)
 - Document completion tracking with DONE prefix
 - File tree visualization
 - Rules document creation with project type detection
