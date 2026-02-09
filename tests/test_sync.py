@@ -4,13 +4,16 @@ from unittest.mock import MagicMock, patch
 
 from rich.console import Console
 
+from cfs.core import VALID_CATEGORIES
 from cfs.github import GitHubIssue
 from cfs.sync import (
+    DEFAULT_EXCLUDED_CATEGORIES,
     SYNC_CATEGORIES,
     SyncAction,
     SyncItem,
     SyncPlan,
     build_sync_plan,
+    compute_sync_categories,
     execute_sync_plan,
     generate_diff,
     get_category_from_github_issue,
@@ -25,11 +28,60 @@ class TestSyncCategories:
         """Test that tmp category is excluded from sync."""
         assert "tmp" not in SYNC_CATEGORIES
 
+    def test_security_excluded(self):
+        """Test that security category is excluded from sync by default."""
+        assert "security" not in SYNC_CATEGORIES
+        assert "security" in DEFAULT_EXCLUDED_CATEGORIES
+
     def test_main_categories_included(self):
         """Test that main categories are included."""
         assert "features" in SYNC_CATEGORIES
         assert "bugs" in SYNC_CATEGORIES
         assert "progress" in SYNC_CATEGORIES
+
+
+class TestComputeSyncCategories:
+    """Tests for compute_sync_categories function."""
+
+    def test_default_excludes_tmp_and_security(self):
+        """Test that defaults exclude tmp and security."""
+        cats = compute_sync_categories()
+        assert "tmp" not in cats
+        assert "security" not in cats
+        assert "features" in cats
+
+    def test_include_overrides_default_exclusion(self):
+        """Test that include_categories overrides default exclusion."""
+        cats = compute_sync_categories(include_categories={"security"})
+        assert "security" in cats
+        assert "tmp" not in cats  # still excluded
+
+    def test_exclude_adds_to_exclusions(self):
+        """Test that exclude_categories adds to default exclusions."""
+        cats = compute_sync_categories(exclude_categories={"progress"})
+        assert "progress" not in cats
+        assert "tmp" not in cats
+        assert "security" not in cats
+
+    def test_include_and_exclude_together(self):
+        """Test combining include and exclude."""
+        cats = compute_sync_categories(
+            include_categories={"security"},
+            exclude_categories={"progress"},
+        )
+        assert "security" in cats
+        assert "progress" not in cats
+        assert "tmp" not in cats
+
+    def test_result_is_subset_of_valid_categories(self):
+        """Test that result only contains valid categories."""
+        cats = compute_sync_categories()
+        assert cats.issubset(VALID_CATEGORIES)
+
+    def test_include_all_excluded(self):
+        """Test including all default exclusions."""
+        cats = compute_sync_categories(include_categories={"tmp", "security"})
+        assert cats == VALID_CATEGORIES
 
 
 class TestSyncItem:

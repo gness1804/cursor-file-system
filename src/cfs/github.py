@@ -292,6 +292,23 @@ def close_issue(issue_number: int) -> GitHubIssue:
     return get_issue(issue_number)
 
 
+def delete_issue(issue_number: int) -> None:
+    """Delete a GitHub issue permanently.
+
+    Args:
+        issue_number: The issue number to delete.
+
+    Raises:
+        GitHubCLINotFoundError: If gh CLI is not installed.
+        GitHubAuthError: If not authenticated.
+        GitHubAPIError: If API call fails.
+    """
+    if not check_gh_authenticated():
+        raise GitHubAuthError("gh CLI is not authenticated. Run 'gh auth login' first.")
+
+    _run_gh_command(["issue", "delete", str(issue_number), "--yes"])
+
+
 def reopen_issue(issue_number: int) -> GitHubIssue:
     """Reopen a closed GitHub issue.
 

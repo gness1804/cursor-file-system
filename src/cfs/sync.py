@@ -35,11 +35,34 @@ from cfs.github import (
     update_issue,
 )
 
-# Categories to exclude from sync
-EXCLUDED_CATEGORIES = {"tmp"}
+# Categories to exclude from sync by default.
+# Security is excluded because CFS security documents may contain vulnerability
+# details that should not be exposed in public GitHub issues.
+DEFAULT_EXCLUDED_CATEGORIES = {"tmp", "security"}
 
-# Categories that should be synced
-SYNC_CATEGORIES = VALID_CATEGORIES - EXCLUDED_CATEGORIES
+# Default categories that should be synced
+SYNC_CATEGORIES = VALID_CATEGORIES - DEFAULT_EXCLUDED_CATEGORIES
+
+
+def compute_sync_categories(
+    include_categories: Optional[Set[str]] = None,
+    exclude_categories: Optional[Set[str]] = None,
+) -> Set[str]:
+    """Compute the effective set of categories to sync.
+
+    Args:
+        include_categories: Categories to force-include even if in default exclusion list.
+        exclude_categories: Additional categories to exclude beyond defaults.
+
+    Returns:
+        Set of category names to sync.
+    """
+    excluded = set(DEFAULT_EXCLUDED_CATEGORIES)
+    if include_categories:
+        excluded -= include_categories
+    if exclude_categories:
+        excluded |= exclude_categories
+    return VALID_CATEGORIES - excluded
 
 
 class SyncAction(Enum):
@@ -102,17 +125,21 @@ class SyncPlan:
         return [item for item in self.items if item.action != SyncAction.NO_ACTION]
 
 
-def get_all_cfs_documents(cfs_root: Path) -> Dict[str, List[dict]]:
+def get_all_cfs_documents(
+    cfs_root: Path, sync_categories: Optional[Set[str]] = None
+) -> Dict[str, List[dict]]:
     """Get all CFS documents organized by category.
 
     Args:
         cfs_root: Path to the .cursor directory.
+        sync_categories: Categories to include. Defaults to SYNC_CATEGORIES.
 
     Returns:
         Dictionary mapping category to list of document info dicts.
     """
+    categories = sync_categories if sync_categories is not None else SYNC_CATEGORIES
     all_docs = {}
-    for category in SYNC_CATEGORIES:
+    for category in categories:
         docs = list_documents(cfs_root, category)
         if category in docs:
             all_docs[category] = docs[category]
@@ -121,17 +148,20 @@ def get_all_cfs_documents(cfs_root: Path) -> Dict[str, List[dict]]:
     return all_docs
 
 
-def get_linked_documents(cfs_root: Path) -> Dict[int, Tuple[str, int, Path]]:
+def get_linked_documents(
+    cfs_root: Path, sync_categories: Optional[Set[str]] = None
+) -> Dict[int, Tuple[str, int, Path]]:
     """Get all CFS documents that are linked to GitHub issues.
 
     Args:
         cfs_root: Path to the .cursor directory.
+        sync_categories: Categories to include. Defaults to SYNC_CATEGORIES.
 
     Returns:
         Dictionary mapping GitHub issue number to (category, doc_id, doc_path).
     """
     linked = {}
-    all_docs = get_all_cfs_documents(cfs_root)
+    all_docs = get_all_cfs_documents(cfs_root, sync_categories)
 
     for category, docs in all_docs.items():
         for doc in docs:
@@ -247,43 +277,53 @@ def is_cfs_document_done(doc_path: Path) -> bool:
     return "DONE" in stem or "CLOSED" in stem
 
 
-def get_category_from_github_issue(issue: GitHubIssue) -> Optional[str]:
+def get_category_from_github_issue(
+    issue: GitHubIssue, sync_categories: Optional[Set[str]] = None
+) -> Optional[str]:
     """Extract CFS category from GitHub issue labels.
 
     Args:
         issue: GitHub issue object.
+        sync_categories: Categories to include. Defaults to SYNC_CATEGORIES.
 
     Returns:
         Category name if found in labels, None otherwise.
     """
+    categories = sync_categories if sync_categories is not None else SYNC_CATEGORIES
     for label in issue.labels:
         category = get_category_from_cfs_label(label)
-        if category and category in SYNC_CATEGORIES:
+        if category and category in categories:
             return category
     return None
 
 
-def build_sync_plan(cfs_root: Path, github_issues: List[GitHubIssue]) -> SyncPlan:
+def build_sync_plan(
+    cfs_root: Path,
+    github_issues: List[GitHubIssue],
+    sync_categories: Optional[Set[str]] = None,
+) -> SyncPlan:
     """Build a sync plan comparing CFS documents with GitHub issues.
 
     Args:
         cfs_root: Path to the .cursor directory.
         github_issues: List of GitHub issues to compare against.
+        sync_categories: Categories to include. Defaults to SYNC_CATEGORIES.
 
     Returns:
         SyncPlan with all necessary sync actions.
     """
     plan = SyncPlan()
+    categories = sync_categories if sync_categories is not None else SYNC_CATEGORIES
 
     # Get all linked documents
-    linked_docs = get_linked_documents(cfs_root)
+    linked_docs = get_linked_documents(cfs_root, categories)
     plan.linked_count = len(linked_docs)
 
     # Track which GitHub issues are linked
     linked_github_numbers: Set[int] = set(linked_docs.keys())
 
     # Get all CFS documents
-    all_docs = get_all_cfs_documents(cfs_root)
+    all_docs = get_all_cfs_documents(cfs_root, categories)
 
     # Check each linked document for status/content sync
     for issue_num, (category, doc_id, doc_path) in linked_docs.items():
@@ -388,7 +428,7 @@ def build_sync_plan(cfs_root: Path, github_issues: List[GitHubIssue]) -> SyncPla
     for issue in github_issues:
         if issue.number not in linked_github_numbers and issue.state.lower() == "open":
             # Unlinked open issue -> create CFS document
-            category = get_category_from_github_issue(issue)
+            category = get_category_from_github_issue(issue, categories)
             plan.add(
                 SyncItem(
                     action=SyncAction.CREATE_CFS,
@@ -474,19 +514,23 @@ def display_diff(console: Console, local_content: str, remote_content: str) -> N
     console.print(diff_panel)
 
 
-def prompt_category_selection(console: Console, title: str) -> Optional[str]:
+def prompt_category_selection(
+    console: Console, title: str, sync_categories: Optional[Set[str]] = None
+) -> Optional[str]:
     """Prompt user to select a category for a new CFS document.
 
     Args:
         console: Rich console for output.
         title: Issue title for context.
+        sync_categories: Categories to include. Defaults to SYNC_CATEGORIES.
 
     Returns:
         Selected category name or None if cancelled.
     """
     console.print(f"\n[yellow]Select category for:[/yellow] {title}")
 
-    categories = sorted(SYNC_CATEGORIES)
+    cats = sync_categories if sync_categories is not None else SYNC_CATEGORIES
+    categories = sorted(cats)
     for i, cat in enumerate(categories, 1):
         console.print(f"  {i}. {cat}")
 
