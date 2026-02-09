@@ -16,6 +16,7 @@ VALID_CATEGORIES = {
     "docs",
     "progress",
     "qa",
+    "security",
     "tmp",
 }
 

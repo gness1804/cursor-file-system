@@ -110,6 +110,7 @@ class TestValidateCategory:
             "docs",
             "progress",
             "qa",
+            "security",
             "tmp",
         }
         assert VALID_CATEGORIES == expected_categories

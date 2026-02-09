@@ -29,7 +29,7 @@ src/cfs/
 
 ### Document Storage
 - Location: `.cursor/{category}/{id}-{kebab-case-title}.md`
-- Categories: `rules`, `research`, `bugs`, `features`, `refactors`, `docs`, `progress`, `qa`, `tmp`
+- Categories: `rules`, `research`, `bugs`, `features`, `refactors`, `docs`, `progress`, `qa`, `security`, `tmp`
 - Status markers in filename: `1-title.md` (incomplete), `1-DONE-title.md`, `1-CLOSED-title.md`
 
 ### Document Structure

@@ -1808,6 +1808,7 @@ This directory was initialized using the Cursor File Structure (CFS) CLI.{langua
 - **docs/** - Documentation creation instructions
 - **progress/** - Progress tracking and handoff documents
 - **qa/** - Testing and QA documents
+- **security/** - Security-related documents
 - **tmp/** - Temporary files for Cursor agent use
 
 ## Usage
