@@ -38,14 +38,10 @@ def get_next_id(category_path: Path) -> int:
 
         # Check for duplicate IDs (edge case)
         if len(existing_ids) != len(set(existing_ids)):
-            # Found duplicates - warn but continue
-            # This shouldn't happen in normal operation
-            import warnings
-
-            warnings.warn(
+            raise DocumentOperationError(
+                "get next ID",
                 f"Duplicate IDs detected in {category_path}. "
-                "This may indicate a file system issue.",
-                UserWarning,
+                "Run the 'check' command to audit this category.",
             )
 
         return max(existing_ids) + 1
@@ -165,6 +161,78 @@ def title_case(kebab_title: str) -> str:
     return " ".join(word.capitalize() for word in words if word)
 
 
+def _extract_title_from_filename(filename: str) -> Optional[str]:
+    """Extract the kebab-case title from a CFS filename, ignoring ID and status markers.
+
+    Handles formats like: 1-title.md, 1-DONE-title.md, 1-CLOSED-title.md
+
+    Args:
+        filename: The filename (with or without .md extension).
+
+    Returns:
+        The kebab-case title portion, or None if the filename can't be parsed.
+    """
+    stem = Path(filename).stem
+    parts = stem.split("-", 1)
+    if not parts or not parts[0].isdigit():
+        return None
+    if len(parts) < 2:
+        return None
+
+    rest = parts[1]
+    # Strip status markers
+    for marker in ("DONE-", "CLOSED-"):
+        if rest.startswith(marker):
+            rest = rest[len(marker) :]
+            break
+
+    return rest if rest else None
+
+
+def check_duplicates(category_path: Path) -> List[str]:
+    """Audit a category directory for duplicate IDs or titles.
+
+    Args:
+        category_path: Path to the category directory.
+
+    Returns:
+        List of issue description strings. Empty list means no issues found.
+    """
+    if not category_path.exists():
+        return []
+
+    ids: Dict[int, List[str]] = {}
+    titles: Dict[str, List[str]] = {}
+
+    for file in category_path.iterdir():
+        if not file.is_file() or file.suffix != ".md":
+            continue
+
+        parsed_id = parse_document_id(file.name)
+        if parsed_id is None:
+            continue
+
+        # Track IDs
+        ids.setdefault(parsed_id, []).append(file.name)
+
+        # Track titles (normalized)
+        title = _extract_title_from_filename(file.name)
+        if title:
+            titles.setdefault(title, []).append(file.name)
+
+    issues: List[str] = []
+
+    for doc_id, filenames in ids.items():
+        if len(filenames) > 1:
+            issues.append(f"Duplicate ID {doc_id}: {', '.join(filenames)}")
+
+    for title, filenames in titles.items():
+        if len(filenames) > 1:
+            issues.append(f"Duplicate title '{title}': {', '.join(filenames)}")
+
+    return issues
+
+
 def create_document(
     category_path: Path, title: str, content: str = "", repo_root: Optional[Path] = None
 ) -> Path:
@@ -201,13 +269,27 @@ def create_document(
     # Convert title to kebab-case
     kebab_title = kebab_case(title)
 
+    # Check for duplicate title (ignoring status markers like DONE/CLOSED)
+    if kebab_title:
+        for file in category_path.iterdir():
+            if file.is_file() and file.suffix == ".md":
+                existing_title = _extract_title_from_filename(file.name)
+                if existing_title and existing_title == kebab_title:
+                    raise DocumentOperationError(
+                        "create document",
+                        f"A document with title '{title}' already exists: {file.name}",
+                    )
+
+    # Re-validate ID right before write (handles race condition)
+    while find_document_by_id(category_path, doc_id) is not None:
+        doc_id += 1
+
     # Create filename: ID-title.md
     filename = f"{doc_id}-{kebab_title}.md" if kebab_title else f"{doc_id}.md"
     file_path = category_path / filename
 
     # Check for duplicate filename (edge case)
     if file_path.exists():
-        # This shouldn't happen with proper ID generation, but handle it
         raise DocumentOperationError(
             "create document",
             f"File already exists: {file_path}. This may indicate a duplicate ID issue.",
