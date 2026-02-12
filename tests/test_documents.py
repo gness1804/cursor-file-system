@@ -3,6 +3,7 @@
 import pytest
 
 from cfs.documents import (
+    check_duplicates,
     create_document,
     delete_document,
     edit_document,
@@ -17,6 +18,7 @@ from cfs.documents import (
 )
 from cfs.exceptions import (
     DocumentNotFoundError,
+    DocumentOperationError,
     InvalidDocumentIDError,
 )
 
@@ -438,3 +440,127 @@ class TestGetNextUnresolvedDocumentID:
 
         result = get_next_unresolved_document_id(category_path)
         assert result == 1
+
+
+class TestDuplicatePrevention:
+    """Tests for duplicate ID and title prevention."""
+
+    def test_create_document_auto_increments_on_id_collision(self, tmp_path):
+        """Test that create_document skips an ID already used by another file."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        # Pre-create a document with ID 1
+        (category_path / "1-existing-bug.md").write_text("content")
+
+        # Create a new document — get_next_id returns 2, no collision
+        doc = create_document(category_path, "New Bug", "content")
+        assert doc.name == "2-new-bug.md"
+
+        # Simulate race: manually create file with ID 3 after get_next_id would return 3
+        (category_path / "3-race-condition.md").write_text("content")
+
+        # Now create_document should skip 3 and use 4
+        doc2 = create_document(category_path, "Another Bug", "content")
+        assert doc2.name == "4-another-bug.md"
+
+    def test_create_document_rejects_duplicate_title(self, tmp_path):
+        """Test that creating a document with a duplicate title raises an error."""
+        category_path = tmp_path / "features"
+        category_path.mkdir()
+
+        # Create first document
+        create_document(category_path, "Add Login", "content")
+
+        # Try to create another with same title
+        with pytest.raises(DocumentOperationError, match="already exists"):
+            create_document(category_path, "Add Login", "content")
+
+    def test_create_document_rejects_duplicate_title_with_done_marker(self, tmp_path):
+        """Test that a DONE-marked doc still blocks creation of same title."""
+        category_path = tmp_path / "features"
+        category_path.mkdir()
+
+        # Pre-create a DONE document
+        (category_path / "1-DONE-add-login.md").write_text("content")
+
+        with pytest.raises(DocumentOperationError, match="already exists"):
+            create_document(category_path, "Add Login", "content")
+
+    def test_create_document_rejects_duplicate_title_with_closed_marker(self, tmp_path):
+        """Test that a CLOSED-marked doc still blocks creation of same title."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        (category_path / "1-CLOSED-fix-crash.md").write_text("content")
+
+        with pytest.raises(DocumentOperationError, match="already exists"):
+            create_document(category_path, "Fix Crash", "content")
+
+    def test_get_next_id_raises_on_existing_duplicates(self, tmp_path):
+        """Test that get_next_id raises an error when duplicate IDs exist."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        # Manually create two files with the same ID
+        (category_path / "1-first.md").write_text("content")
+        (category_path / "1-second.md").write_text("content")
+
+        with pytest.raises(DocumentOperationError, match="Duplicate IDs detected"):
+            get_next_id(category_path)
+
+
+class TestCheckDuplicates:
+    """Tests for check_duplicates function."""
+
+    def test_no_issues_on_clean_category(self, tmp_path):
+        """Test that a clean category returns no issues."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        (category_path / "1-first-bug.md").write_text("content")
+        (category_path / "2-second-bug.md").write_text("content")
+
+        issues = check_duplicates(category_path)
+        assert issues == []
+
+    def test_detects_duplicate_ids(self, tmp_path):
+        """Test that duplicate IDs are detected."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        (category_path / "1-first.md").write_text("content")
+        (category_path / "1-also-first.md").write_text("content")
+
+        issues = check_duplicates(category_path)
+        assert len(issues) >= 1
+        assert any("Duplicate ID 1" in issue for issue in issues)
+
+    def test_detects_duplicate_titles(self, tmp_path):
+        """Test that duplicate titles are detected."""
+        category_path = tmp_path / "features"
+        category_path.mkdir()
+
+        (category_path / "1-add-login.md").write_text("content")
+        (category_path / "2-add-login.md").write_text("content")
+
+        issues = check_duplicates(category_path)
+        assert len(issues) >= 1
+        assert any("Duplicate title 'add-login'" in issue for issue in issues)
+
+    def test_detects_duplicate_titles_across_status_markers(self, tmp_path):
+        """Test that DONE/CLOSED markers are ignored for title comparison."""
+        category_path = tmp_path / "bugs"
+        category_path.mkdir()
+
+        (category_path / "1-DONE-fix-crash.md").write_text("content")
+        (category_path / "2-fix-crash.md").write_text("content")
+
+        issues = check_duplicates(category_path)
+        assert any("Duplicate title 'fix-crash'" in issue for issue in issues)
+
+    def test_nonexistent_category_returns_empty(self, tmp_path):
+        """Test that a nonexistent category returns no issues."""
+        category_path = tmp_path / "nonexistent"
+        issues = check_duplicates(category_path)
+        assert issues == []

@@ -754,6 +754,31 @@ def create_category_commands() -> None:
                     handle_cfs_error(e)
                     raise typer.Abort()
 
+            @category_app.command("check")
+            def check_in_category() -> None:
+                """Check for duplicate IDs or titles in this category."""
+                from cfs.documents import check_duplicates
+
+                try:
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                try:
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                issues = check_duplicates(category_path)
+                if not issues:
+                    console.print(f"[green]No duplicate issues found in {cat} category[/green]")
+                else:
+                    console.print(f"[red]Found {len(issues)} issue(s) in {cat} category:[/red]")
+                    for issue in issues:
+                        console.print(f"  [yellow]- {issue}[/yellow]")
+
         # Create all commands for this category
         make_category_commands(category)
 
