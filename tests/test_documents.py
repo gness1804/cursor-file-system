@@ -3,6 +3,7 @@
 import pytest
 
 from cfs.documents import (
+    _renumber_category,
     check_duplicates,
     create_document,
     delete_document,
@@ -13,6 +14,7 @@ from cfs.documents import (
     get_next_unresolved_document_id,
     kebab_case,
     list_documents,
+    move_document,
     parse_document_id,
     parse_document_id_from_string,
 )
@@ -564,3 +566,205 @@ class TestCheckDuplicates:
         category_path = tmp_path / "nonexistent"
         issues = check_duplicates(category_path)
         assert issues == []
+
+
+class TestMoveDocument:
+    """Tests for move_document function."""
+
+    def test_move_document_basic(self, tmp_path):
+        """Test basic document move between categories."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "security"
+        dest.mkdir()
+
+        (source / "1-add-login.md").write_text("# Add Login\n\nContent here")
+
+        result = move_document(source, dest, 1, renumber=False)
+
+        assert result == dest / "1-add-login.md"
+        assert result.exists()
+        assert result.read_text() == "# Add Login\n\nContent here"
+        assert not (source / "1-add-login.md").exists()
+
+    def test_move_document_gets_next_id_in_destination(self, tmp_path):
+        """Test that moved document gets the next available ID in destination."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "security"
+        dest.mkdir()
+
+        # Pre-populate destination with existing docs
+        (dest / "1-existing-doc.md").write_text("existing")
+        (dest / "2-another-doc.md").write_text("existing")
+
+        (source / "1-add-login.md").write_text("content")
+
+        result = move_document(source, dest, 1, renumber=False)
+
+        assert result.name == "3-add-login.md"
+        assert result.exists()
+
+    def test_move_document_preserves_done_marker(self, tmp_path):
+        """Test that DONE status marker is preserved during move."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "bugs"
+        dest.mkdir()
+
+        (source / "1-DONE-add-login.md").write_text("content")
+
+        result = move_document(source, dest, 1, renumber=False)
+
+        assert result.name == "1-DONE-add-login.md"
+        assert result.exists()
+
+    def test_move_document_preserves_closed_marker(self, tmp_path):
+        """Test that CLOSED status marker is preserved during move."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "bugs"
+        dest.mkdir()
+
+        (source / "1-CLOSED-add-login.md").write_text("content")
+
+        result = move_document(source, dest, 1, renumber=False)
+
+        assert result.name == "1-CLOSED-add-login.md"
+        assert result.exists()
+
+    def test_move_document_not_found(self, tmp_path):
+        """Test that moving a non-existent document raises error."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "bugs"
+        dest.mkdir()
+
+        with pytest.raises(DocumentNotFoundError):
+            move_document(source, dest, 99, renumber=False)
+
+    def test_move_document_creates_dest_dir(self, tmp_path):
+        """Test that destination directory is created if it doesn't exist."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "security"
+        # Don't create dest directory
+
+        (source / "1-add-login.md").write_text("content")
+
+        result = move_document(source, dest, 1, renumber=False)
+
+        assert dest.exists()
+        assert result.exists()
+
+    def test_move_document_with_renumber(self, tmp_path):
+        """Test that source category is renumbered after move."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "security"
+        dest.mkdir()
+
+        (source / "1-first.md").write_text("first")
+        (source / "2-second.md").write_text("second")
+        (source / "3-third.md").write_text("third")
+
+        # Move doc 2
+        move_document(source, dest, 2, renumber=True)
+
+        # Source should be renumbered: 1-first.md, 2-third.md
+        assert (source / "1-first.md").exists()
+        assert (source / "2-third.md").exists()
+        assert not (source / "3-third.md").exists()
+
+    def test_move_document_without_renumber(self, tmp_path):
+        """Test that source category is NOT renumbered when renumber=False."""
+        source = tmp_path / "features"
+        source.mkdir()
+        dest = tmp_path / "security"
+        dest.mkdir()
+
+        (source / "1-first.md").write_text("first")
+        (source / "2-second.md").write_text("second")
+        (source / "3-third.md").write_text("third")
+
+        # Move doc 2 without renumbering
+        move_document(source, dest, 2, renumber=False)
+
+        # Source should have gap: 1-first.md, 3-third.md
+        assert (source / "1-first.md").exists()
+        assert not (source / "2-second.md").exists()
+        assert (source / "3-third.md").exists()
+
+
+class TestRenumberCategory:
+    """Tests for _renumber_category function."""
+
+    def test_renumber_fills_gap(self, tmp_path):
+        """Test that renumbering fills gaps in IDs."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-first.md").write_text("first")
+        (category / "3-third.md").write_text("third")
+        (category / "5-fifth.md").write_text("fifth")
+
+        _renumber_category(category)
+
+        assert (category / "1-first.md").exists()
+        assert (category / "2-third.md").exists()
+        assert (category / "3-fifth.md").exists()
+        assert not (category / "5-fifth.md").exists()
+
+    def test_renumber_already_sequential(self, tmp_path):
+        """Test that renumbering is a no-op when IDs are already sequential."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-first.md").write_text("first")
+        (category / "2-second.md").write_text("second")
+
+        _renumber_category(category)
+
+        assert (category / "1-first.md").exists()
+        assert (category / "2-second.md").exists()
+
+    def test_renumber_empty_category(self, tmp_path):
+        """Test renumbering an empty category is a no-op."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        _renumber_category(category)
+        # No error should be raised
+
+    def test_renumber_nonexistent_category(self, tmp_path):
+        """Test renumbering a nonexistent category is a no-op."""
+        category = tmp_path / "nonexistent"
+
+        _renumber_category(category)
+        # No error should be raised
+
+    def test_renumber_preserves_content(self, tmp_path):
+        """Test that file contents are preserved during renumbering."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-first.md").write_text("first content")
+        (category / "5-fifth.md").write_text("fifth content")
+
+        _renumber_category(category)
+
+        assert (category / "1-first.md").read_text() == "first content"
+        assert (category / "2-fifth.md").read_text() == "fifth content"
+
+    def test_renumber_preserves_done_marker(self, tmp_path):
+        """Test that DONE markers are preserved during renumbering."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-first.md").write_text("first")
+        (category / "5-DONE-fifth.md").write_text("fifth")
+
+        _renumber_category(category)
+
+        assert (category / "1-first.md").exists()
+        assert (category / "2-DONE-fifth.md").exists()
