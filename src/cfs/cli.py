@@ -1755,6 +1755,121 @@ def order_documents_command(
         raise typer.Abort()
 
 
+@instructions_app.command("move")
+def move_document_command(
+    source_category: str = typer.Argument(..., help="Source category name"),
+    doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+    dest_category: str = typer.Argument(..., help="Destination category name"),
+    no_renumber: bool = typer.Option(
+        False,
+        "--no-renumber",
+        help="Skip renumbering documents in the source category after move",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-y",
+        "--yes",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """Move a document from one category to another.
+
+    The document receives a new sequential ID in the destination category.
+    By default, documents in the source category are renumbered to fill the gap.
+
+    Example: cfs i move features 1 security
+    """
+    from cfs import documents
+    from cfs.documents import (
+        find_document_by_id,
+        get_document_title,
+        move_document,
+        parse_document_id_from_string,
+    )
+
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Validate source category
+    try:
+        source_path = core.get_category_path(cfs_root, source_category)
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Validate destination category
+    try:
+        dest_path = core.get_category_path(cfs_root, dest_category)
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Same category check
+    if source_category == dest_category:
+        console.print(
+            "[red]Error: Source and destination categories are the same[/red]"
+        )
+        raise typer.Abort()
+
+    # Parse document ID
+    try:
+        parsed_id = parse_document_id_from_string(doc_id)
+    except InvalidDocumentIDError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Find document to show preview
+    doc_path = find_document_by_id(source_path, parsed_id)
+    if doc_path is None or not doc_path.exists():
+        try:
+            raise DocumentNotFoundError(parsed_id, source_category)
+        except DocumentNotFoundError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+
+    # Get document title for confirmation
+    try:
+        title = get_document_title(doc_path)
+    except Exception:
+        title = doc_path.stem
+
+    # Confirm before moving
+    if not force:
+        console.print(f"\n[bold]Document:[/bold] {title}")
+        console.print(f"[dim]ID: {parsed_id}, Source: {source_category}[/dim]")
+        console.print(f"[dim]Destination: {dest_category}[/dim]")
+        console.print()
+        if not typer.confirm(
+            f"Move document {parsed_id} from {source_category} to {dest_category}?",
+            default=False,
+        ):
+            console.print("[yellow]Operation cancelled[/yellow]")
+            raise typer.Abort()
+
+    # Move document
+    try:
+        new_path = move_document(
+            source_path,
+            dest_path,
+            parsed_id,
+            renumber=not no_renumber,
+        )
+        console.print(
+            f"[green]✓ Moved document to: {new_path}[/green]",
+        )
+        if not no_renumber:
+            console.print(
+                f"[dim]Documents in {source_category} have been renumbered[/dim]"
+            )
+    except (DocumentNotFoundError, DocumentOperationError) as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+
 # Global options callback
 @app.callback(invoke_without_command=True)
 def main_callback(

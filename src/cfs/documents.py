@@ -1098,6 +1098,185 @@ def extract_document_sections(content: str) -> Dict[str, str]:
     return sections
 
 
+def move_document(
+    source_category_path: Path,
+    dest_category_path: Path,
+    doc_id: int,
+    renumber: bool = True,
+) -> Path:
+    """Move a document from one category to another.
+
+    The document gets a new ID in the destination category. If renumber is True,
+    documents in the source category are renumbered to fill the gap.
+
+    Args:
+        source_category_path: Path to the source category directory.
+        dest_category_path: Path to the destination category directory.
+        doc_id: Document ID in the source category.
+        renumber: If True, renumber remaining documents in the source category.
+
+    Returns:
+        Path to the moved document in the destination category.
+
+    Raises:
+        DocumentNotFoundError: If document is not found in the source category.
+        DocumentOperationError: If the move operation fails.
+    """
+    # Find the document in the source category
+    doc_path = find_document_by_id(source_category_path, doc_id)
+    if doc_path is None or not doc_path.exists():
+        category_name = (
+            source_category_path.name if source_category_path.exists() else "unknown"
+        )
+        raise DocumentNotFoundError(doc_id, category_name)
+
+    # Read document content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        raise DocumentOperationError("read document", str(e))
+
+    # Ensure destination category directory exists
+    try:
+        dest_category_path.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError(
+            "move document",
+            f"Cannot create destination category directory: {e}",
+        )
+
+    # Get next available ID in destination
+    new_id = get_next_id(dest_category_path)
+
+    # Extract the title part from the filename, preserving status markers (DONE/CLOSED)
+    stem = doc_path.stem
+    if stem.startswith(f"{doc_id}-"):
+        title_part = stem[len(f"{doc_id}-"):]
+    else:
+        title_part = stem
+
+    # Build new filename with the new ID
+    if title_part:
+        new_filename = f"{new_id}-{title_part}.md"
+    else:
+        new_filename = f"{new_id}.md"
+
+    new_path = dest_category_path / new_filename
+
+    # Check for conflicts
+    if new_path.exists():
+        raise DocumentOperationError(
+            "move document",
+            f"Target file already exists: {new_path}",
+        )
+
+    # Write to destination
+    try:
+        new_path.write_text(content, encoding="utf-8")
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("move document", f"Cannot write to destination: {e}")
+
+    # Delete from source
+    try:
+        doc_path.unlink()
+    except (OSError, PermissionError) as e:
+        # Clean up the destination file if source deletion fails
+        try:
+            new_path.unlink()
+        except Exception:
+            pass
+        raise DocumentOperationError("move document", f"Cannot delete source file: {e}")
+
+    # Renumber source category if requested
+    if renumber:
+        _renumber_category(source_category_path)
+
+    return new_path
+
+
+def _renumber_category(category_path: Path) -> None:
+    """Renumber documents in a category sequentially starting from 1.
+
+    Args:
+        category_path: Path to the category directory.
+
+    Raises:
+        DocumentOperationError: If renumbering fails.
+    """
+    if not category_path.exists():
+        return
+
+    # Collect all .md files with their IDs
+    files = []
+    try:
+        for file_path in category_path.iterdir():
+            if file_path.is_file() and file_path.suffix == ".md":
+                parsed_id = parse_document_id(file_path.name)
+                if parsed_id is not None:
+                    files.append((parsed_id, file_path))
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError(
+            "renumber documents",
+            f"Cannot read category directory: {e}",
+        )
+
+    if not files:
+        return
+
+    # Sort by current ID
+    files.sort(key=lambda x: x[0])
+
+    # Check if renumbering is needed
+    needs_renumber = False
+    for i, (current_id, _) in enumerate(files, start=1):
+        if current_id != i:
+            needs_renumber = True
+            break
+
+    if not needs_renumber:
+        return
+
+    # Rename to temporary files first to avoid conflicts
+    temp_renames = []
+    try:
+        for current_id, file_path in files:
+            temp_name = f".tmp_renumber_{file_path.name}"
+            temp_path = file_path.parent / temp_name
+            file_path.rename(temp_path)
+            temp_renames.append((current_id, temp_path, file_path))
+    except (OSError, PermissionError) as e:
+        # Rollback temp renames
+        for _, temp_path, original_path in temp_renames:
+            try:
+                temp_path.rename(original_path)
+            except Exception:
+                pass
+        raise DocumentOperationError("renumber documents", f"Cannot rename file: {e}")
+
+    # Rename from temp to final sequential IDs
+    try:
+        for new_id, (old_id, temp_path, original_path) in enumerate(temp_renames, start=1):
+            stem = temp_path.stem.replace(".tmp_renumber_", "")
+            # The stem still has the temp prefix, so get the original stem
+            original_stem = original_path.stem
+            if original_stem.startswith(f"{old_id}-"):
+                title_part = original_stem[len(f"{old_id}-"):]
+                if title_part:
+                    new_filename = f"{new_id}-{title_part}.md"
+                else:
+                    new_filename = f"{new_id}.md"
+            else:
+                new_filename = f"{new_id}.md"
+
+            new_path = category_path / new_filename
+            temp_path.rename(new_path)
+    except (OSError, PermissionError) as e:
+        raise DocumentOperationError(
+            "renumber documents",
+            f"Cannot rename file to final name: {e}",
+        )
+
+
 def build_github_issue_body(content: str) -> str:
     """Build GitHub issue body from CFS document content.
 
