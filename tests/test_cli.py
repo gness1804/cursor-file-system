@@ -155,6 +155,63 @@ class TestCreateCommand:
             assert result.exit_code != 0
             assert "CFS structure not found" in result.stdout
 
+    def test_create_document_with_content_flag(self, runner, tmp_path):
+        """Test non-interactive document creation with --content flag."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+
+            result = runner.invoke(
+                app,
+                [
+                    "instructions",
+                    "bugs",
+                    "create",
+                    "--title",
+                    "Non Interactive Bug",
+                    "--content",
+                    "This bug happens in non-interactive mode",
+                ],
+            )
+
+            assert result.exit_code == 0
+            bug_file = cursor_dir / "bugs" / "1-non-interactive-bug.md"
+            assert bug_file.exists()
+            content = bug_file.read_text()
+            assert "# Non Interactive Bug" in content
+            assert "## Contents" in content
+            assert "This bug happens in non-interactive mode" in content
+            assert "## Acceptance criteria" in content
+
+    def test_create_document_with_content_flag_no_editor_prompt(self, runner, tmp_path):
+        """Test that --content flag skips the editor prompt entirely."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "features").mkdir()
+
+            result = runner.invoke(
+                app,
+                [
+                    "instructions",
+                    "features",
+                    "create",
+                    "--title",
+                    "Test Feature",
+                    "--content",
+                    "Feature description",
+                ],
+            )
+
+            assert result.exit_code == 0
+            # Should not contain editor selection text
+            assert "Select an editor" not in result.stdout
+
 
 class TestEditCommand:
     """Tests for `cfs instructions <category> edit` command."""
@@ -187,6 +244,47 @@ class TestEditCommand:
 
         with runner.isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "bugs", "edit", "999"])
+
+            assert result.exit_code != 0
+            assert "not found" in result.stdout
+
+    def test_edit_document_with_content_flag(self, runner, tmp_path):
+        """Test non-interactive document editing with --content flag."""
+        with runner.isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+            bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+            bug_file.write_text("Old content")
+
+            result = runner.invoke(
+                app,
+                [
+                    "instructions",
+                    "bugs",
+                    "edit",
+                    "1",
+                    "--content",
+                    "New content via non-interactive mode",
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert bug_file.read_text() == "New content via non-interactive mode"
+            # Should not contain editor selection text
+            assert "Select an editor" not in result.stdout
+
+    def test_edit_document_with_content_flag_not_found(self, runner, temp_cfs):
+        """Test non-interactive edit of non-existent document."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "edit", "999", "--content", "New content"],
+            )
 
             assert result.exit_code != 0
             assert "not found" in result.stdout

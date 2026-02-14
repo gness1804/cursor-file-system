@@ -99,6 +99,10 @@ cfs instructions features create
 # Or: cfs instr features create
 # Will prompt for: Document title
 # Then ask: Would you like to edit now? [y/N]
+
+# Create in non-interactive mode (bypasses editor, ideal for AI agents)
+cfs instructions bugs create --title "Fix login bug" --content "Description of the bug"
+# Or: cfs instr bugs create -t "Fix login bug" -c "Description of the bug"
 ```
 
 **Example workflow:**
@@ -118,9 +122,13 @@ cfs instructions bugs edit 1
 
 # Edit by full filename
 cfs instructions bugs edit 1-fix-login-bug.md
+
+# Edit in non-interactive mode (bypasses editor, ideal for AI agents)
+cfs instructions bugs edit 1 --content "Full replacement content here"
+# Or: cfs instr bugs edit 1 -c "Full replacement content here"
 ```
 
-The editor will open with the current content. Save and close to update the document.
+The editor will open with the current content (unless `--content` is provided). Save and close to update the document.
 
 ### Viewing Documents
 
@@ -388,8 +396,8 @@ The generated file includes:
 
 **Note:** You can use either `instructions` or the shorter `instr` alias for all commands below.
 
-- `cfs instructions <category> create [--title TITLE] [--edit]` - Create new document
-- `cfs instructions <category> edit <id>` - Edit existing document
+- `cfs instructions <category> create [--title TITLE] [--edit] [--content TEXT]` - Create new document
+- `cfs instructions <category> edit <id> [--content TEXT]` - Edit existing document
 - `cfs instructions <category> delete <id> [--force]` - Delete document
 - `cfs instructions <category> view` - View documents in category
 - `cfs instructions view [category]` - View all documents or filter by category

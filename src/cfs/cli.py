@@ -187,6 +187,12 @@ def create_category_commands() -> None:
                     "-e",
                     help="Open editor immediately after creating",
                 ),
+                content_body: Optional[str] = typer.Option(
+                    None,
+                    "--content",
+                    "-c",
+                    help="Document content (bypasses editor for non-interactive use)",
+                ),
             ) -> None:
                 """Create a new document in this category."""
                 from cfs import documents
@@ -245,9 +251,26 @@ def create_category_commands() -> None:
                 ]
                 initial_content = "\n".join(initial_content_lines)
 
-                # Get content - prompt if edit flag is set, or ask user if not set
+                # Get content - use --content if provided, otherwise prompt/editor
                 content = initial_content
-                if edit:
+                if content_body is not None:
+                    # Non-interactive mode: insert content into the Contents section
+                    initial_content_lines_with_body = [
+                        f"# {title_case_title}",
+                        "",
+                        "## Working directory",
+                        "",
+                        f"`{repo_path_str}`",
+                        "",
+                        "## Contents",
+                        "",
+                        content_body,
+                        "",
+                        "## Acceptance criteria",
+                        "",
+                    ]
+                    content = "\n".join(initial_content_lines_with_body)
+                elif edit:
                     from cfs import editor
 
                     console.print(f"[yellow]Opening editor for '{title}'...[/yellow]")
@@ -300,6 +323,12 @@ def create_category_commands() -> None:
             @category_app.command("edit")
             def edit_in_category(
                 doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+                content_body: Optional[str] = typer.Option(
+                    None,
+                    "--content",
+                    "-c",
+                    help="New document content (bypasses editor for non-interactive use)",
+                ),
             ) -> None:
                 """Edit an existing document in this category."""
                 from cfs import documents, editor
@@ -335,6 +364,18 @@ def create_category_commands() -> None:
                 except DocumentOperationError as e:
                     handle_cfs_error(e)
                     raise typer.Abort()
+
+                if content_body is not None:
+                    # Non-interactive mode: use provided content directly
+                    try:
+                        doc_path = documents.edit_document(category_path, parsed_id, content_body)
+                        console.print(
+                            f"[green]✓ Updated document: {doc_path}[/green]",
+                        )
+                    except (DocumentNotFoundError, DocumentOperationError) as e:
+                        handle_cfs_error(e)
+                        raise typer.Abort()
+                    return
 
                 # Get document title for prompt
                 from cfs.documents import find_document_by_id, get_document_title
@@ -1780,7 +1821,6 @@ def move_document_command(
 
     Example: cfs i move features 1 security
     """
-    from cfs import documents
     from cfs.documents import (
         find_document_by_id,
         get_document_title,
@@ -1810,9 +1850,7 @@ def move_document_command(
 
     # Same category check
     if source_category == dest_category:
-        console.print(
-            "[red]Error: Source and destination categories are the same[/red]"
-        )
+        console.print("[red]Error: Source and destination categories are the same[/red]")
         raise typer.Abort()
 
     # Parse document ID
@@ -1862,9 +1900,7 @@ def move_document_command(
             f"[green]✓ Moved document to: {new_path}[/green]",
         )
         if not no_renumber:
-            console.print(
-                f"[dim]Documents in {source_category} have been renumbered[/dim]"
-            )
+            console.print(f"[dim]Documents in {source_category} have been renumbered[/dim]")
     except (DocumentNotFoundError, DocumentOperationError) as e:
         handle_cfs_error(e)
         raise typer.Abort()

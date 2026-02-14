@@ -1125,9 +1125,7 @@ def move_document(
     # Find the document in the source category
     doc_path = find_document_by_id(source_category_path, doc_id)
     if doc_path is None or not doc_path.exists():
-        category_name = (
-            source_category_path.name if source_category_path.exists() else "unknown"
-        )
+        category_name = source_category_path.name if source_category_path.exists() else "unknown"
         raise DocumentNotFoundError(doc_id, category_name)
 
     # Read document content
@@ -1151,7 +1149,7 @@ def move_document(
     # Extract the title part from the filename, preserving status markers (DONE/CLOSED)
     stem = doc_path.stem
     if stem.startswith(f"{doc_id}-"):
-        title_part = stem[len(f"{doc_id}-"):]
+        title_part = stem[len(f"{doc_id}-") :]
     else:
         title_part = stem
 
@@ -1256,11 +1254,9 @@ def _renumber_category(category_path: Path) -> None:
     # Rename from temp to final sequential IDs
     try:
         for new_id, (old_id, temp_path, original_path) in enumerate(temp_renames, start=1):
-            stem = temp_path.stem.replace(".tmp_renumber_", "")
-            # The stem still has the temp prefix, so get the original stem
             original_stem = original_path.stem
             if original_stem.startswith(f"{old_id}-"):
-                title_part = original_stem[len(f"{old_id}-"):]
+                title_part = original_stem[len(f"{old_id}-") :]
                 if title_part:
                     new_filename = f"{new_id}-{title_part}.md"
                 else:
