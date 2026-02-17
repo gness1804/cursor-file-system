@@ -1194,3 +1194,361 @@ class TestExecCommand:
             assert call_args[0] == "/usr/local/bin/codex"
             assert "Test Bug" in call_args[1]
             assert "cfs i bugs complete 1" in call_args[1]
+
+
+# =============================================================================
+# Tests for GitHub auto-sync hooks
+# =============================================================================
+
+
+class TestTryAutoCreateGithubIssue:
+    """Tests for _try_auto_create_github_issue helper."""
+
+    def test_skips_when_gh_not_installed(self, tmp_path):
+        """Should silently skip when gh CLI is not installed."""
+        from cfs.cli import _try_auto_create_github_issue
+
+        doc_path = tmp_path / "1-test.md"
+        doc_path.write_text("# Test\n\n## Contents\n\nHello\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=False):
+            # Should not raise and should not attempt to create issue
+            with patch("cfs.github.create_issue") as mock_create:
+                _try_auto_create_github_issue("bugs", doc_path, "Test")
+                mock_create.assert_not_called()
+
+    def test_skips_when_not_authenticated(self, tmp_path):
+        """Should silently skip when gh CLI is not authenticated."""
+        from cfs.cli import _try_auto_create_github_issue
+
+        doc_path = tmp_path / "1-test.md"
+        doc_path.write_text("# Test\n\n## Contents\n\nHello\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=False):
+                with patch("cfs.github.create_issue") as mock_create:
+                    _try_auto_create_github_issue("bugs", doc_path, "Test")
+                    mock_create.assert_not_called()
+
+    def test_skips_for_excluded_category_tmp(self, tmp_path):
+        """Should skip for 'tmp' category (excluded from sync)."""
+        from cfs.cli import _try_auto_create_github_issue
+
+        doc_path = tmp_path / "1-test.md"
+        doc_path.write_text("# Test\n\n## Contents\n\nHello\n")
+
+        with patch("cfs.github.create_issue") as mock_create:
+            _try_auto_create_github_issue("tmp", doc_path, "Test")
+            mock_create.assert_not_called()
+
+    def test_skips_for_excluded_category_security(self, tmp_path):
+        """Should skip for 'security' category (excluded from sync)."""
+        from cfs.cli import _try_auto_create_github_issue
+
+        doc_path = tmp_path / "1-test.md"
+        doc_path.write_text("# Test\n\n## Contents\n\nHello\n")
+
+        with patch("cfs.github.create_issue") as mock_create:
+            _try_auto_create_github_issue("security", doc_path, "Test")
+            mock_create.assert_not_called()
+
+    def test_skips_when_document_already_linked(self, tmp_path):
+        """Should skip when document already has a github_issue link."""
+        from cfs.cli import _try_auto_create_github_issue
+
+        doc_path = tmp_path / "1-test.md"
+        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=True):
+                with patch("cfs.github.create_issue") as mock_create:
+                    _try_auto_create_github_issue("bugs", doc_path, "Test")
+                    mock_create.assert_not_called()
+
+    def test_creates_issue_and_links_document(self, tmp_path):
+        """Should create GitHub issue and update document with frontmatter link."""
+        from unittest.mock import MagicMock
+
+        from cfs.cli import _try_auto_create_github_issue
+        from cfs.github import GitHubIssue
+
+        doc_path = tmp_path / "1-test-bug.md"
+        doc_path.write_text("# Test Bug\n\n## Contents\n\nSome content\n\n## Acceptance criteria\n\nDone\n")
+
+        mock_issue = GitHubIssue(
+            number=99,
+            title="Test Bug",
+            body="Some content",
+            state="open",
+            labels=["cfs:bugs"],
+            url="https://github.com/owner/repo/issues/99",
+        )
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=True):
+                with patch("cfs.github.ensure_label_exists", return_value=True):
+                    with patch("cfs.github.create_issue", return_value=mock_issue) as mock_create:
+                        _try_auto_create_github_issue("bugs", doc_path, "Test Bug")
+
+                        mock_create.assert_called_once()
+                        # Verify document was updated with frontmatter
+                        content = doc_path.read_text()
+                        assert "github_issue: 99" in content
+
+    def test_handles_github_error_gracefully(self, tmp_path):
+        """Should display a warning and not raise when a GitHub error occurs."""
+        from cfs.cli import _try_auto_create_github_issue
+        from cfs.github import GitHubAPIError
+
+        doc_path = tmp_path / "1-test.md"
+        doc_path.write_text("# Test\n\n## Contents\n\nHello\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=True):
+                with patch("cfs.github.ensure_label_exists", return_value=True):
+                    with patch("cfs.github.create_issue", side_effect=GitHubAPIError("API error")):
+                        # Should not raise
+                        _try_auto_create_github_issue("bugs", doc_path, "Test")
+
+
+class TestTryAutoCloseGithubIssue:
+    """Tests for _try_auto_close_github_issue helper."""
+
+    def test_skips_when_no_github_issue_link(self, tmp_path):
+        """Should silently skip when document has no github_issue frontmatter."""
+        from cfs.cli import _try_auto_close_github_issue
+
+        doc_path = tmp_path / "1-DONE-test.md"
+        doc_path.write_text("# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+
+        with patch("cfs.github.close_issue") as mock_close:
+            _try_auto_close_github_issue(doc_path)
+            mock_close.assert_not_called()
+
+    def test_skips_when_gh_not_installed(self, tmp_path):
+        """Should silently skip when gh CLI is not installed."""
+        from cfs.cli import _try_auto_close_github_issue
+
+        doc_path = tmp_path / "1-DONE-test.md"
+        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=False):
+            with patch("cfs.github.close_issue") as mock_close:
+                _try_auto_close_github_issue(doc_path)
+                mock_close.assert_not_called()
+
+    def test_skips_when_not_authenticated(self, tmp_path):
+        """Should silently skip when gh CLI is not authenticated."""
+        from cfs.cli import _try_auto_close_github_issue
+
+        doc_path = tmp_path / "1-DONE-test.md"
+        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=False):
+                with patch("cfs.github.close_issue") as mock_close:
+                    _try_auto_close_github_issue(doc_path)
+                    mock_close.assert_not_called()
+
+    def test_skips_when_issue_already_closed(self, tmp_path):
+        """Should silently skip when the linked GitHub issue is already closed."""
+        from unittest.mock import MagicMock
+
+        from cfs.cli import _try_auto_close_github_issue
+        from cfs.github import GitHubIssue
+
+        doc_path = tmp_path / "1-DONE-test.md"
+        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+
+        already_closed_issue = GitHubIssue(
+            number=42,
+            title="Test",
+            body="",
+            state="closed",
+            labels=[],
+            url="https://github.com/owner/repo/issues/42",
+        )
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=True):
+                with patch("cfs.github.get_issue", return_value=already_closed_issue):
+                    with patch("cfs.github.close_issue") as mock_close:
+                        _try_auto_close_github_issue(doc_path)
+                        mock_close.assert_not_called()
+
+    def test_closes_open_linked_issue(self, tmp_path):
+        """Should close a linked GitHub issue that is currently open."""
+        from cfs.cli import _try_auto_close_github_issue
+        from cfs.github import GitHubIssue
+
+        doc_path = tmp_path / "1-DONE-test.md"
+        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+
+        open_issue = GitHubIssue(
+            number=42,
+            title="Test",
+            body="",
+            state="open",
+            labels=[],
+            url="https://github.com/owner/repo/issues/42",
+        )
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=True):
+                with patch("cfs.github.get_issue", return_value=open_issue):
+                    with patch("cfs.github.close_issue") as mock_close:
+                        _try_auto_close_github_issue(doc_path)
+                        mock_close.assert_called_once_with(42)
+
+    def test_handles_github_error_gracefully(self, tmp_path):
+        """Should display a warning and not raise when a GitHub error occurs."""
+        from cfs.cli import _try_auto_close_github_issue
+        from cfs.github import GitHubAPIError
+
+        doc_path = tmp_path / "1-DONE-test.md"
+        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+
+        with patch("cfs.github.check_gh_installed", return_value=True):
+            with patch("cfs.github.check_gh_authenticated", return_value=True):
+                with patch("cfs.github.get_issue", side_effect=GitHubAPIError("API error")):
+                    # Should not raise
+                    _try_auto_close_github_issue(doc_path)
+
+
+class TestCreateCommandWithGithubAutoSync:
+    """Integration tests for create command triggering GitHub auto-sync."""
+
+    def test_create_skips_github_when_gh_not_installed(self, runner, tmp_path):
+        """Create command should succeed even when gh is not installed."""
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+
+            with patch("cfs.github.check_gh_installed", return_value=False):
+                result = runner.invoke(
+                    app,
+                    ["instructions", "bugs", "create", "--title", "Auto Sync Bug", "--content", "Some content"],
+                )
+
+            assert result.exit_code == 0
+            assert (cursor_dir / "bugs" / "1-auto-sync-bug.md").exists()
+            # No GitHub issue should be mentioned in output
+            assert "Created GitHub issue" not in result.output
+
+    def test_create_auto_creates_github_issue_when_authenticated(self, runner, tmp_path):
+        """Create command should auto-create a GitHub issue when gh is authenticated."""
+        from cfs.github import GitHubIssue
+
+        mock_issue = GitHubIssue(
+            number=55,
+            title="Auto Sync Bug",
+            body="Some content",
+            state="open",
+            labels=["cfs:bugs"],
+            url="https://github.com/owner/repo/issues/55",
+        )
+
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+
+            with patch("cfs.github.check_gh_installed", return_value=True):
+                with patch("cfs.github.check_gh_authenticated", return_value=True):
+                    with patch("cfs.github.ensure_label_exists", return_value=True):
+                        with patch("cfs.github.create_issue", return_value=mock_issue):
+                            result = runner.invoke(
+                                app,
+                                [
+                                    "instructions",
+                                    "bugs",
+                                    "create",
+                                    "--title",
+                                    "Auto Sync Bug",
+                                    "--content",
+                                    "Some content",
+                                ],
+                            )
+
+            assert result.exit_code == 0
+            assert "Created GitHub issue #55" in result.output
+            doc_path = cursor_dir / "bugs" / "1-auto-sync-bug.md"
+            assert doc_path.exists()
+            assert "github_issue: 55" in doc_path.read_text()
+
+    def test_complete_auto_closes_github_issue(self, runner, tmp_path):
+        """Complete command should auto-close a linked GitHub issue."""
+        from cfs.github import GitHubIssue
+
+        open_issue = GitHubIssue(
+            number=42,
+            title="Test Bug",
+            body="",
+            state="open",
+            labels=[],
+            url="https://github.com/owner/repo/issues/42",
+        )
+
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            bugs_dir = cursor_dir / "bugs"
+            bugs_dir.mkdir()
+
+            # Create document already linked to GitHub issue
+            (bugs_dir / "1-test-bug.md").write_text(
+                "---\ngithub_issue: 42\n---\n# Test Bug\n\n## Contents\n\nHello\n"
+            )
+
+            with patch("cfs.github.check_gh_installed", return_value=True):
+                with patch("cfs.github.check_gh_authenticated", return_value=True):
+                    with patch("cfs.github.get_issue", return_value=open_issue):
+                        with patch("cfs.github.close_issue") as mock_close:
+                            result = runner.invoke(
+                                app,
+                                ["instructions", "bugs", "complete", "1", "--force"],
+                            )
+
+            assert result.exit_code == 0
+            assert "Completed document" in result.output
+            assert "Closed GitHub issue #42" in result.output
+            mock_close.assert_called_once_with(42)
+
+    def test_close_auto_closes_github_issue(self, runner, tmp_path):
+        """Close command should auto-close a linked GitHub issue."""
+        from cfs.github import GitHubIssue
+
+        open_issue = GitHubIssue(
+            number=77,
+            title="Test Feature",
+            body="",
+            state="open",
+            labels=[],
+            url="https://github.com/owner/repo/issues/77",
+        )
+
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            features_dir = cursor_dir / "features"
+            features_dir.mkdir()
+
+            # Create document already linked to GitHub issue
+            (features_dir / "1-test-feature.md").write_text(
+                "---\ngithub_issue: 77\n---\n# Test Feature\n\n## Contents\n\nHello\n"
+            )
+
+            with patch("cfs.github.check_gh_installed", return_value=True):
+                with patch("cfs.github.check_gh_authenticated", return_value=True):
+                    with patch("cfs.github.get_issue", return_value=open_issue):
+                        with patch("cfs.github.close_issue") as mock_close:
+                            result = runner.invoke(
+                                app,
+                                ["instructions", "features", "close", "1", "--force"],
+                            )
+
+            assert result.exit_code == 0
+            assert "Closed document" in result.output
+            assert "Closed GitHub issue #77" in result.output
+            mock_close.assert_called_once_with(77)
