@@ -917,6 +917,84 @@ def create_category_commands() -> None:
                     handle_cfs_error(e)
                     raise typer.Abort()
 
+            @category_app.command("unclose")
+            def unclose_in_category(
+                doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-y",
+                    "--yes",
+                    help="Skip confirmation and unclose immediately",
+                ),
+            ) -> None:
+                """Reverse a document's closed status by removing 'CLOSED' from filename and content."""
+                from cfs import documents
+                from cfs.documents import get_document_title, parse_document_id_from_string
+
+                try:
+                    cfs_root = core.find_cfs_root()
+                except CFSNotFoundError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                try:
+                    category_path = core.get_category_path(cfs_root, cat)
+                except InvalidCategoryError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                try:
+                    parsed_id = parse_document_id_from_string(doc_id)
+                except InvalidDocumentIDError as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
+                doc_path = documents.find_document_by_id(category_path, parsed_id)
+                if doc_path is None or not doc_path.exists():
+                    try:
+                        raise DocumentNotFoundError(parsed_id, cat)
+                    except DocumentNotFoundError as e:
+                        handle_cfs_error(e)
+                        raise typer.Abort()
+
+                try:
+                    title = get_document_title(doc_path)
+                except Exception:
+                    title = doc_path.stem
+
+                try:
+                    content = doc_path.read_text(encoding="utf-8")
+                    lines = content.split("\n")[:5]
+                    preview = "\n".join(lines)
+                    if len(content.split("\n")) > 5:
+                        preview += "\n..."
+
+                    console.print("\n[yellow]Document preview:[/yellow]")
+                    console.print(f"[dim]{preview}[/dim]\n")
+                except Exception:
+                    pass
+
+                if not force:
+                    console.print(f"[bold]Document:[/bold] {title}")
+                    console.print(f"[dim]Category: {cat}, ID: {parsed_id}[/dim]")
+                    console.print()
+                    if not typer.confirm(
+                        f"Remove closed status from document {parsed_id}?",
+                        default=False,
+                    ):
+                        console.print("[yellow]Operation cancelled[/yellow]")
+                        raise typer.Abort()
+
+                try:
+                    new_path = documents.unclose_document(category_path, parsed_id)
+                    console.print(
+                        f"[green]✓ Unclosed document: {new_path}[/green]",
+                    )
+                except (DocumentNotFoundError, DocumentOperationError) as e:
+                    handle_cfs_error(e)
+                    raise typer.Abort()
+
             @category_app.command("close")
             def close_in_category(
                 doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),

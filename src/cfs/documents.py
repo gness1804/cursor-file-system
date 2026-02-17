@@ -909,6 +909,83 @@ def uncomplete_document(category_path: Path, doc_id: int) -> Path:
     return new_path
 
 
+def unclose_document(category_path: Path, doc_id: int) -> Path:
+    """Reverse the closure of a document by removing 'CLOSED' from filename and removing the closed comment.
+
+    Args:
+        category_path: Path to the category directory.
+        doc_id: Document ID to unclose.
+
+    Returns:
+        Path to the unclosed document file.
+
+    Raises:
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If document is not marked as closed, or file cannot be read/written/renamed.
+    """
+    # Find document
+    doc_path = find_document_by_id(category_path, doc_id)
+    if doc_path is None or not doc_path.exists():
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
+
+    stem = doc_path.stem
+
+    # Check that it is currently marked as CLOSED
+    if not stem.startswith(f"{doc_id}-CLOSED-"):
+        raise DocumentOperationError(
+            "unclose document",
+            f"Document {doc_id} is not marked as closed",
+        )
+
+    # Extract the title part by stripping "{id}-CLOSED-"
+    title_part = stem[len(f"{doc_id}-CLOSED-"):]
+
+    # Read current content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        raise DocumentOperationError("read document", str(e))
+
+    # Remove the <!-- CLOSED --> comment (and surrounding blank lines)
+    closed_comment = "<!-- CLOSED -->"
+    if closed_comment in content:
+        content = content.replace("\n\n" + closed_comment + "\n", "")
+        content = content.replace(closed_comment + "\n", "")
+        content = content.replace(closed_comment, "")
+        content = content.rstrip() + "\n"
+
+    # Generate new filename without 'CLOSED': {id}-{title}.md
+    new_filename = f"{doc_id}-{title_part}.md"
+    new_path = category_path / new_filename
+
+    # Check if new filename already exists (shouldn't happen, but handle it)
+    if new_path.exists() and new_path != doc_path:
+        raise DocumentOperationError(
+            "unclose document",
+            f"Target filename already exists: {new_path}",
+        )
+
+    # Write content to new file
+    try:
+        new_path.write_text(content, encoding="utf-8")
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("write document", str(e))
+
+    # Delete old file if it's different from new file
+    if doc_path != new_path:
+        try:
+            doc_path.unlink()
+        except (OSError, PermissionError) as e:
+            try:
+                new_path.unlink()
+            except Exception:
+                pass
+            raise DocumentOperationError("delete old document", str(e))
+
+    return new_path
+
+
 def close_document(category_path: Path, doc_id: int) -> Path:
     """Mark a document as closed by inserting 'CLOSED' after the ID in filename and adding a comment.
     Args:

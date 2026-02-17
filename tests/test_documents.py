@@ -5,6 +5,7 @@ import pytest
 from cfs.documents import (
     _renumber_category,
     check_duplicates,
+    close_document,
     complete_document,
     create_document,
     delete_document,
@@ -18,6 +19,7 @@ from cfs.documents import (
     move_document,
     parse_document_id,
     parse_document_id_from_string,
+    unclose_document,
     uncomplete_document,
 )
 from cfs.exceptions import (
@@ -867,3 +869,109 @@ class TestUncompleteDocument:
         content = uncompleted_path.read_text(encoding="utf-8")
         assert "<!-- DONE -->" not in content
         assert "# Test Bug" in content
+
+
+class TestUncloseDocument:
+    """Tests for unclose_document function."""
+
+    def test_unclose_document_success(self, tmp_path):
+        """Test successfully unclosing a CLOSED document."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        closed_file = category / "1-CLOSED-test-bug.md"
+        closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
+
+        result = unclose_document(category, 1)
+
+        assert result == category / "1-test-bug.md"
+        assert result.exists()
+        assert not closed_file.exists()
+
+    def test_unclose_document_removes_closed_comment(self, tmp_path):
+        """Test that the <!-- CLOSED --> comment is removed from file content."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        closed_file = category / "1-CLOSED-test-bug.md"
+        closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
+
+        result = unclose_document(category, 1)
+
+        content = result.read_text(encoding="utf-8")
+        assert "<!-- CLOSED -->" not in content
+        assert "# Test Bug" in content
+        assert "Content" in content
+
+    def test_unclose_document_not_closed_raises_error(self, tmp_path):
+        """Test that unclosing a non-CLOSED document raises DocumentOperationError."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+        with pytest.raises(DocumentOperationError, match="not marked as closed"):
+            unclose_document(category, 1)
+
+    def test_unclose_document_not_found_raises_error(self, tmp_path):
+        """Test that unclosing a non-existent document raises DocumentNotFoundError."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        with pytest.raises(DocumentNotFoundError):
+            unclose_document(category, 999)
+
+    def test_unclose_document_preserves_title(self, tmp_path):
+        """Test that the title portion of the filename is preserved after unclose."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        closed_file = category / "3-CLOSED-my-cool-feature.md"
+        closed_file.write_text("# My Cool Feature\n\nContent\n\n<!-- CLOSED -->\n")
+
+        result = unclose_document(category, 3)
+
+        assert result.name == "3-my-cool-feature.md"
+        assert result.exists()
+
+    def test_unclose_document_without_closed_comment(self, tmp_path):
+        """Test unclosing a CLOSED file that lacks the <!-- CLOSED --> comment."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        closed_file = category / "1-CLOSED-test-bug.md"
+        closed_file.write_text("# Test Bug\n\nContent\n")
+
+        result = unclose_document(category, 1)
+
+        assert result == category / "1-test-bug.md"
+        assert result.exists()
+        content = result.read_text(encoding="utf-8")
+        assert "<!-- CLOSED -->" not in content
+
+    def test_close_then_unclose_roundtrip(self, tmp_path):
+        """Test that closing then unclosing a document restores the original state."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        original_file = category / "1-test-bug.md"
+        original_file.write_text("# Test Bug\n\nContent\n")
+
+        close_document(category, 1)
+        unclosed_path = unclose_document(category, 1)
+
+        assert unclosed_path == original_file
+        assert unclosed_path.exists()
+        content = unclosed_path.read_text(encoding="utf-8")
+        assert "<!-- CLOSED -->" not in content
+        assert "# Test Bug" in content
+
+    def test_unclose_done_document_raises_error(self, tmp_path):
+        """Test that unclosing a DONE (not CLOSED) document raises DocumentOperationError."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-DONE-test-bug.md").write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
+
+        with pytest.raises(DocumentOperationError, match="not marked as closed"):
+            unclose_document(category, 1)

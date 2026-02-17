@@ -521,6 +521,97 @@ class TestUncompleteCommand:
             assert "not found" in result.stdout
 
 
+class TestUncloseCommand:
+    """Tests for `cfs instructions <category> unclose` command."""
+
+    def test_unclose_document_success(self, runner, temp_cfs):
+        """Test successfully unclosing a CLOSED document with confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        closed_file = cursor_dir / "bugs" / "1-CLOSED-test-bug.md"
+        closed_file.parent.mkdir(parents=True, exist_ok=True)
+        closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "unclose", "1"],
+                input="y\n",
+            )
+
+            assert result.exit_code == 0
+            unclosed_file = cursor_dir / "bugs" / "1-test-bug.md"
+            assert unclosed_file.exists()
+            assert not closed_file.exists()
+
+    def test_unclose_document_with_force_flag(self, runner, temp_cfs):
+        """Test unclosing a document with --force flag skips confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        closed_file = cursor_dir / "bugs" / "1-CLOSED-test-bug.md"
+        closed_file.parent.mkdir(parents=True, exist_ok=True)
+        closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "unclose", "1", "--force"],
+            )
+
+            assert result.exit_code == 0
+            unclosed_file = cursor_dir / "bugs" / "1-test-bug.md"
+            assert unclosed_file.exists()
+            assert not closed_file.exists()
+
+    def test_unclose_document_cancellation(self, runner, temp_cfs):
+        """Test that unclose requires confirmation and can be cancelled."""
+        tmp_path, cursor_dir = temp_cfs
+
+        closed_file = cursor_dir / "bugs" / "1-CLOSED-test-bug.md"
+        closed_file.parent.mkdir(parents=True, exist_ok=True)
+        closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "unclose", "1"],
+                input="n\n",
+            )
+
+            assert result.exit_code != 0
+            assert closed_file.exists()
+            assert "Operation cancelled" in result.stdout
+
+    def test_unclose_document_not_closed(self, runner, temp_cfs):
+        """Test unclosing a document that is not marked as closed."""
+        tmp_path, cursor_dir = temp_cfs
+
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.parent.mkdir(parents=True, exist_ok=True)
+        bug_file.write_text("# Test Bug\n\nContent")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "unclose", "1", "--force"],
+            )
+
+            assert result.exit_code != 0
+
+    def test_unclose_document_not_found(self, runner, temp_cfs):
+        """Test unclosing a non-existent document."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "unclose", "999", "--force"],
+            )
+
+            assert result.exit_code != 0
+            assert "not found" in result.stdout
+
+
 class TestCloseCommand:
     """Tests for `cfs instructions <category> close` command."""
 
