@@ -5,6 +5,7 @@ import pytest
 from cfs.documents import (
     _renumber_category,
     check_duplicates,
+    complete_document,
     create_document,
     delete_document,
     edit_document,
@@ -17,6 +18,7 @@ from cfs.documents import (
     move_document,
     parse_document_id,
     parse_document_id_from_string,
+    uncomplete_document,
 )
 from cfs.exceptions import (
     DocumentNotFoundError,
@@ -768,3 +770,100 @@ class TestRenumberCategory:
 
         assert (category / "1-first.md").exists()
         assert (category / "2-DONE-fifth.md").exists()
+
+
+class TestUncompleteDocument:
+    """Tests for uncomplete_document function."""
+
+    def test_uncomplete_document_success(self, tmp_path):
+        """Test successfully uncompleting a DONE document."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        done_file = category / "1-DONE-test-bug.md"
+        done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
+
+        result = uncomplete_document(category, 1)
+
+        assert result == category / "1-test-bug.md"
+        assert result.exists()
+        assert not done_file.exists()
+
+    def test_uncomplete_document_removes_done_comment(self, tmp_path):
+        """Test that the <!-- DONE --> comment is removed from file content."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        done_file = category / "1-DONE-test-bug.md"
+        done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
+
+        result = uncomplete_document(category, 1)
+
+        content = result.read_text(encoding="utf-8")
+        assert "<!-- DONE -->" not in content
+        assert "# Test Bug" in content
+        assert "Content" in content
+
+    def test_uncomplete_document_not_done_raises_error(self, tmp_path):
+        """Test that uncompleting a non-DONE document raises DocumentOperationError."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        (category / "1-test-bug.md").write_text("# Test Bug\n\nContent")
+
+        with pytest.raises(DocumentOperationError, match="not marked as done"):
+            uncomplete_document(category, 1)
+
+    def test_uncomplete_document_not_found_raises_error(self, tmp_path):
+        """Test that uncompleting a non-existent document raises DocumentNotFoundError."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        with pytest.raises(DocumentNotFoundError):
+            uncomplete_document(category, 999)
+
+    def test_uncomplete_document_preserves_title(self, tmp_path):
+        """Test that the title portion of the filename is preserved after uncomplete."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "3-DONE-my-cool-feature.md"
+        done_file.write_text("# My Cool Feature\n\nContent\n\n<!-- DONE -->\n")
+
+        result = uncomplete_document(category, 3)
+
+        assert result.name == "3-my-cool-feature.md"
+        assert result.exists()
+
+    def test_uncomplete_document_without_done_comment(self, tmp_path):
+        """Test uncompleting a DONE file that lacks the <!-- DONE --> comment."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        done_file = category / "1-DONE-test-bug.md"
+        done_file.write_text("# Test Bug\n\nContent\n")
+
+        result = uncomplete_document(category, 1)
+
+        assert result == category / "1-test-bug.md"
+        assert result.exists()
+        content = result.read_text(encoding="utf-8")
+        assert "<!-- DONE -->" not in content
+
+    def test_complete_then_uncomplete_roundtrip(self, tmp_path):
+        """Test that completing then uncompleting a document restores the original state."""
+        category = tmp_path / "bugs"
+        category.mkdir()
+
+        original_file = category / "1-test-bug.md"
+        original_content = "# Test Bug\n\nContent\n"
+        original_file.write_text(original_content)
+
+        completed_path = complete_document(category, 1)
+        uncompleted_path = uncomplete_document(category, 1)
+
+        assert uncompleted_path == original_file
+        assert uncompleted_path.exists()
+        content = uncompleted_path.read_text(encoding="utf-8")
+        assert "<!-- DONE -->" not in content
+        assert "# Test Bug" in content

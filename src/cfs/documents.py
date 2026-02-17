@@ -829,6 +829,86 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
     return new_path
 
 
+def uncomplete_document(category_path: Path, doc_id: int) -> Path:
+    """Reverse the completion of a document by removing 'DONE' from filename and removing the completion comment.
+
+    Args:
+        category_path: Path to the category directory.
+        doc_id: Document ID to uncomplete.
+
+    Returns:
+        Path to the uncompleted document file.
+
+    Raises:
+        DocumentNotFoundError: If document is not found.
+        DocumentOperationError: If document is not marked as done, or file cannot be read/written/renamed.
+    """
+    # Find document
+    doc_path = find_document_by_id(category_path, doc_id)
+    if doc_path is None or not doc_path.exists():
+        category_name = category_path.name if category_path.exists() else "unknown"
+        raise DocumentNotFoundError(doc_id, category_name)
+
+    stem = doc_path.stem
+
+    # Check that it is currently marked as DONE
+    if not stem.startswith(f"{doc_id}-DONE-"):
+        raise DocumentOperationError(
+            "uncomplete document",
+            f"Document {doc_id} is not marked as done",
+        )
+
+    # Extract the title part by stripping "{id}-DONE-"
+    title_part = stem[len(f"{doc_id}-DONE-"):]
+
+    # Read current content
+    try:
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        raise DocumentOperationError("read document", str(e))
+
+    # Remove the <!-- DONE --> comment (and surrounding blank lines)
+    completion_comment = "<!-- DONE -->"
+    if completion_comment in content:
+        # Strip the comment along with any leading whitespace/newlines before it
+        content = content.replace("\n\n" + completion_comment + "\n", "")
+        # Handle edge case where it may still be present without the double newline prefix
+        content = content.replace(completion_comment + "\n", "")
+        content = content.replace(completion_comment, "")
+        content = content.rstrip() + "\n"
+
+    # Generate new filename without 'DONE': {id}-{title}.md
+    new_filename = f"{doc_id}-{title_part}.md"
+    new_path = category_path / new_filename
+
+    # Check if new filename already exists (shouldn't happen, but handle it)
+    if new_path.exists() and new_path != doc_path:
+        raise DocumentOperationError(
+            "uncomplete document",
+            f"Target filename already exists: {new_path}",
+        )
+
+    # Write content to new file
+    try:
+        new_path.write_text(content, encoding="utf-8")
+    except (OSError, IOError, PermissionError) as e:
+        raise DocumentOperationError("write document", str(e))
+
+    # Delete old file if it's different from new file
+    if doc_path != new_path:
+        try:
+            doc_path.unlink()
+        except (OSError, PermissionError) as e:
+            # If deletion fails, try to clean up the new file
+            try:
+                new_path.unlink()
+            except Exception:
+                pass
+            raise DocumentOperationError("delete old document", str(e))
+
+    return new_path
+
+
 def close_document(category_path: Path, doc_id: int) -> Path:
     """Mark a document as closed by inserting 'CLOSED' after the ID in filename and adding a comment.
     Args:

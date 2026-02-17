@@ -430,6 +430,97 @@ class TestCompleteCommand:
             assert "not found" in result.stdout
 
 
+class TestUncompleteCommand:
+    """Tests for `cfs instructions <category> uncomplete` command."""
+
+    def test_uncomplete_document_success(self, runner, temp_cfs):
+        """Test successfully uncompleting a DONE document with confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        done_file = cursor_dir / "bugs" / "1-DONE-test-bug.md"
+        done_file.parent.mkdir(parents=True, exist_ok=True)
+        done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "uncomplete", "1"],
+                input="y\n",
+            )
+
+            assert result.exit_code == 0
+            uncompleted_file = cursor_dir / "bugs" / "1-test-bug.md"
+            assert uncompleted_file.exists()
+            assert not done_file.exists()
+
+    def test_uncomplete_document_with_force_flag(self, runner, temp_cfs):
+        """Test uncompleting a document with --force flag skips confirmation."""
+        tmp_path, cursor_dir = temp_cfs
+
+        done_file = cursor_dir / "bugs" / "1-DONE-test-bug.md"
+        done_file.parent.mkdir(parents=True, exist_ok=True)
+        done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "uncomplete", "1", "--force"],
+            )
+
+            assert result.exit_code == 0
+            uncompleted_file = cursor_dir / "bugs" / "1-test-bug.md"
+            assert uncompleted_file.exists()
+            assert not done_file.exists()
+
+    def test_uncomplete_document_cancellation(self, runner, temp_cfs):
+        """Test that uncomplete requires confirmation and can be cancelled."""
+        tmp_path, cursor_dir = temp_cfs
+
+        done_file = cursor_dir / "bugs" / "1-DONE-test-bug.md"
+        done_file.parent.mkdir(parents=True, exist_ok=True)
+        done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "uncomplete", "1"],
+                input="n\n",
+            )
+
+            assert result.exit_code != 0
+            assert done_file.exists()
+            assert "Operation cancelled" in result.stdout
+
+    def test_uncomplete_document_not_done(self, runner, temp_cfs):
+        """Test uncompleting a document that is not marked as done."""
+        tmp_path, cursor_dir = temp_cfs
+
+        bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+        bug_file.parent.mkdir(parents=True, exist_ok=True)
+        bug_file.write_text("# Test Bug\n\nContent")
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "uncomplete", "1", "--force"],
+            )
+
+            assert result.exit_code != 0
+
+    def test_uncomplete_document_not_found(self, runner, temp_cfs):
+        """Test uncompleting a non-existent document."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with runner.isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "uncomplete", "999", "--force"],
+            )
+
+            assert result.exit_code != 0
+            assert "not found" in result.stdout
+
+
 class TestCloseCommand:
     """Tests for `cfs instructions <category> close` command."""
 
