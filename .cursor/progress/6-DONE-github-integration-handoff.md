@@ -102,3 +102,5 @@ cfs gh sync            # Run actual sync
 ## Plan Document
 
 Full implementation plan is at `.cursor/progress/5-github-issues-integration-plan.md`
+
+<!-- DONE -->

@@ -19,3 +19,5 @@ However we also have to be mindful of the fact that some people don't have GitHu
 
 - Creating a CFS issue will trigger a hook which creates the corresponding GitHub issue. 
 - Marking a CFS issue as done or closed will close the corresponding GitHub issue.
+
+<!-- DONE -->
