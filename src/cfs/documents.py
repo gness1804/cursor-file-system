@@ -808,23 +808,23 @@ def complete_document(category_path: Path, doc_id: int) -> Path:
             f"Target filename already exists: {new_path}",
         )
 
-    # Write content to new file
-    try:
-        new_path.write_text(content, encoding="utf-8")
-    except (OSError, IOError, PermissionError) as e:
-        raise DocumentOperationError("write document", str(e))
-
-    # Delete old file if it's different from new file
+    # Write updated content in-place then rename atomically.
+    # This avoids a window where both doc_path and new_path exist simultaneously
+    # (which would create two files with the same numeric ID).
     if doc_path != new_path:
         try:
-            doc_path.unlink()
+            doc_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
+        try:
+            doc_path.rename(new_path)
         except (OSError, PermissionError) as e:
-            # If deletion fails, try to clean up the new file
-            try:
-                new_path.unlink()
-            except Exception:
-                pass
-            raise DocumentOperationError("delete old document", str(e))
+            raise DocumentOperationError("rename document", str(e))
+    else:
+        try:
+            new_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
 
     return new_path
 
@@ -888,23 +888,21 @@ def uncomplete_document(category_path: Path, doc_id: int) -> Path:
             f"Target filename already exists: {new_path}",
         )
 
-    # Write content to new file
-    try:
-        new_path.write_text(content, encoding="utf-8")
-    except (OSError, IOError, PermissionError) as e:
-        raise DocumentOperationError("write document", str(e))
-
-    # Delete old file if it's different from new file
+    # Write updated content in-place then rename atomically.
     if doc_path != new_path:
         try:
-            doc_path.unlink()
+            doc_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
+        try:
+            doc_path.rename(new_path)
         except (OSError, PermissionError) as e:
-            # If deletion fails, try to clean up the new file
-            try:
-                new_path.unlink()
-            except Exception:
-                pass
-            raise DocumentOperationError("delete old document", str(e))
+            raise DocumentOperationError("rename document", str(e))
+    else:
+        try:
+            new_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
 
     return new_path
 
@@ -966,22 +964,21 @@ def unclose_document(category_path: Path, doc_id: int) -> Path:
             f"Target filename already exists: {new_path}",
         )
 
-    # Write content to new file
-    try:
-        new_path.write_text(content, encoding="utf-8")
-    except (OSError, IOError, PermissionError) as e:
-        raise DocumentOperationError("write document", str(e))
-
-    # Delete old file if it's different from new file
+    # Write updated content in-place then rename atomically.
     if doc_path != new_path:
         try:
-            doc_path.unlink()
+            doc_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
+        try:
+            doc_path.rename(new_path)
         except (OSError, PermissionError) as e:
-            try:
-                new_path.unlink()
-            except Exception:
-                pass
-            raise DocumentOperationError("delete old document", str(e))
+            raise DocumentOperationError("rename document", str(e))
+    else:
+        try:
+            new_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
 
     return new_path
 
@@ -1051,25 +1048,89 @@ def close_document(category_path: Path, doc_id: int) -> Path:
             f"Target filename already exists: {new_path}",
         )
 
-    # Write content to new file
-    try:
-        new_path.write_text(content, encoding="utf-8")
-    except (OSError, IOError, PermissionError) as e:
-        raise DocumentOperationError("write document", str(e))
-
-    # Delete old file if it's different from new file
+    # Write updated content in-place then rename atomically.
     if doc_path != new_path:
         try:
-            doc_path.unlink()
+            doc_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
+        try:
+            doc_path.rename(new_path)
         except (OSError, PermissionError) as e:
-            # If deletion fails, try to clean up the new file
-            try:
-                new_path.unlink()
-            except Exception:
-                pass
-            raise DocumentOperationError("delete old document", str(e))
+            raise DocumentOperationError("rename document", str(e))
+    else:
+        try:
+            new_path.write_text(content, encoding="utf-8")
+        except (OSError, IOError, PermissionError) as e:
+            raise DocumentOperationError("write document", str(e))
 
     return new_path
+
+
+def remove_duplicate_documents(
+    category_path: Path, dry_run: bool = False
+) -> List[Dict[str, Any]]:
+    """Remove duplicate documents from a category, keeping the best version.
+
+    When duplicates exist, preference order for keeping:
+    1. DONE/CLOSED version (over incomplete)
+    2. Most recently modified (if both same status)
+
+    Args:
+        category_path: Path to the category directory.
+        dry_run: If True, return what would be removed without deleting.
+
+    Returns:
+        List of dicts describing removed (or would-be-removed) files,
+        each with keys: 'path', 'kept', 'reason'.
+    """
+    if not category_path.exists():
+        return []
+
+    # Collect files grouped by ID
+    ids: Dict[int, List[Path]] = {}
+    for file in category_path.iterdir():
+        if not file.is_file() or file.suffix != ".md":
+            continue
+        parsed_id = parse_document_id(file.name)
+        if parsed_id is None:
+            continue
+        ids.setdefault(parsed_id, []).append(file)
+
+    actions: List[Dict[str, Any]] = []
+
+    for doc_id, files in ids.items():
+        if len(files) <= 1:
+            continue
+
+        # Score each file: DONE/CLOSED = 2, else 0; add mtime as tiebreaker
+        def _score(p: Path) -> tuple:
+            stem = p.stem
+            status_score = 2 if (f"{doc_id}-DONE-" in stem or f"{doc_id}-CLOSED-" in stem) else 0
+            try:
+                mtime = p.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            return (status_score, mtime)
+
+        files_sorted = sorted(files, key=_score, reverse=True)
+        keeper = files_sorted[0]
+        to_remove = files_sorted[1:]
+
+        for dup in to_remove:
+            action = {
+                "path": dup,
+                "kept": keeper,
+                "reason": f"Keeping {keeper.name} (better status/newer)",
+            }
+            if not dry_run:
+                try:
+                    dup.unlink()
+                except (OSError, PermissionError) as e:
+                    action["error"] = str(e)
+            actions.append(action)
+
+    return actions
 
 
 # =============================================================================

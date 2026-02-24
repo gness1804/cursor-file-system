@@ -593,3 +593,87 @@ class TestExecuteSyncPlan:
         call_args = mock_console.print.call_args[0][0]
         assert "Error: Content conflict" in call_args
         assert "Run in an interactive shell to resolve" in call_args
+
+
+class TestBuildSyncPlanDuplicates:
+    """Tests for duplicate detection in build_sync_plan."""
+
+    def test_detects_duplicate_categories(self, tmp_path):
+        """build_sync_plan populates duplicate_categories for categories with duplicate IDs."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        features = cfs_root / "features"
+        features.mkdir()
+
+        # Create two files with the same ID
+        (features / "15-DONE-my-feature.md").write_text("# My Feature\n\nDone.\n")
+        (features / "15-my-feature.md").write_text("# My Feature\n\nNot done.\n")
+
+        plan = build_sync_plan(cfs_root, [])
+
+        assert "features" in plan.duplicate_categories
+
+    def test_no_duplicate_categories_when_clean(self, tmp_path):
+        """build_sync_plan has empty duplicate_categories when no duplicates exist."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        (cfs_root / "features").mkdir()
+        (cfs_root / "features" / "1-clean.md").write_text("# Clean\n\nContent.\n")
+
+        plan = build_sync_plan(cfs_root, [])
+
+        assert len(plan.duplicate_categories) == 0
+
+    def test_skips_create_cfs_when_matching_title_exists(self, tmp_path):
+        """build_sync_plan skips CREATE_CFS when a CFS doc with the same title already exists."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        features = cfs_root / "features"
+        features.mkdir()
+
+        # A DONE doc exists (no github_issue frontmatter)
+        (features / "15-DONE-post-deployment-fast-follow.md").write_text(
+            "# Post-deployment Fast Follow\n\nDone.\n"
+        )
+
+        github_issues = [
+            GitHubIssue(
+                number=99,
+                title="Post-deployment fast follow",
+                body="Some description",
+                state="open",
+                labels=["cfs:features"],
+                url="",
+            )
+        ]
+        plan = build_sync_plan(cfs_root, github_issues)
+
+        create_cfs_actions = [a for a in plan.get_actions() if a.action == SyncAction.CREATE_CFS]
+        assert len(create_cfs_actions) == 0
+
+    def test_skips_create_cfs_when_category_has_duplicates(self, tmp_path):
+        """build_sync_plan skips CREATE_CFS for categories that have duplicate IDs."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        features = cfs_root / "features"
+        features.mkdir()
+
+        # Two files with the same ID (duplicate)
+        (features / "15-DONE-my-feature.md").write_text("# My Feature\n\nDone.\n")
+        (features / "15-my-feature.md").write_text("# My Feature\n\nNot done.\n")
+
+        # A GitHub issue that would normally trigger CREATE_CFS
+        github_issues = [
+            GitHubIssue(
+                number=200,
+                title="Brand new feature",
+                body="Description",
+                state="open",
+                labels=["cfs:features"],
+                url="",
+            )
+        ]
+        plan = build_sync_plan(cfs_root, github_issues)
+
+        create_cfs_actions = [a for a in plan.get_actions() if a.action == SyncAction.CREATE_CFS]
+        assert len(create_cfs_actions) == 0
