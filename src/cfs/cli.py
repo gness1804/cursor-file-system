@@ -3402,6 +3402,69 @@ def gh_purge_excluded(
         console.print()
 
 
+@gh_app.command("dedup")
+def gh_dedup(
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be removed without making changes"
+    ),
+) -> None:
+    """Remove duplicate CFS documents across all synced categories.
+
+    When duplicate document IDs or titles are found, keeps the best version
+    (DONE/CLOSED preferred, then most recently modified) and removes the rest.
+
+    Duplicates can arise when a file rename operation is interrupted mid-way
+    during a complete or close operation.  Run this command to clean up, then
+    re-run 'cfs gh sync' to restore a consistent state.
+    """
+    from cfs.documents import check_duplicates, remove_duplicate_documents
+    from cfs.sync import SYNC_CATEGORIES
+
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    total_removed = 0
+    total_errors = 0
+
+    for category in sorted(SYNC_CATEGORIES):
+        category_path = core.get_category_path(cfs_root, category)
+        issues = check_duplicates(category_path)
+        if not issues:
+            continue
+
+        console.print(f"\n[yellow]{category}[/yellow]")
+        for issue in issues:
+            console.print(f"  [red]{issue}[/red]")
+
+        actions = remove_duplicate_documents(category_path, dry_run=dry_run)
+        for action in actions:
+            if "error" in action:
+                console.print(
+                    f"  [red]Error removing {action['path'].name}: {action['error']}[/red]"
+                )
+                total_errors += 1
+            else:
+                verb = "Would remove" if dry_run else "Removed"
+                console.print(
+                    f"  [green]{verb} {action['path'].name}[/green] "
+                    f"(kept {action['kept'].name})"
+                )
+                if not dry_run:
+                    total_removed += 1
+
+    if total_removed == 0 and total_errors == 0 and not dry_run:
+        console.print("[green]No duplicates found.[/green]")
+    elif not dry_run:
+        console.print(f"\n[green]Removed {total_removed} duplicate file(s).[/green]", end="")
+        if total_errors:
+            console.print(f" [red]{total_errors} error(s).[/red]")
+        else:
+            console.print()
+
+
 def main() -> None:
     """Main entry point for the CLI."""
     app()

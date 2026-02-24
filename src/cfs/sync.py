@@ -15,13 +15,16 @@ from rich.table import Table
 from cfs.core import VALID_CATEGORIES, get_category_path
 from cfs.documents import (
     build_github_issue_body,
+    check_duplicates,
     complete_document,
     create_document,
     edit_document,
     extract_document_sections,
     get_github_issue_number,
+    kebab_case,
     list_documents,
     parse_document_id,
+    remove_duplicate_documents,
     set_github_issue_number,
 )
 from cfs.github import (
@@ -111,6 +114,7 @@ class SyncPlan:
     linked_count: int = 0
     unlinked_cfs_count: int = 0
     unlinked_github_count: int = 0
+    duplicate_categories: Set[str] = field(default_factory=set)
 
     def add(self, item: SyncItem) -> None:
         """Add a sync item to the plan."""
@@ -297,6 +301,31 @@ def get_category_from_github_issue(
     return None
 
 
+def _find_doc_by_title(docs: List[dict], title: str) -> Optional[dict]:
+    """Find a document in a list by matching kebab-case title.
+
+    Args:
+        docs: List of document info dicts (from list_documents).
+        title: Title to search for (will be kebab-cased for comparison).
+
+    Returns:
+        Matching document dict, or None.
+    """
+    from cfs.documents import _extract_title_from_filename
+
+    target = kebab_case(title)
+    if not target:
+        return None
+    for doc in docs:
+        doc_path = doc.get("path")
+        if doc_path is None:
+            continue
+        existing = _extract_title_from_filename(doc_path.name)
+        if existing and existing == target:
+            return doc
+    return None
+
+
 def build_sync_plan(
     cfs_root: Path,
     github_issues: List[GitHubIssue],
@@ -314,6 +343,16 @@ def build_sync_plan(
     """
     plan = SyncPlan()
     categories = sync_categories if sync_categories is not None else SYNC_CATEGORIES
+
+    # Check for duplicate IDs/titles in each category before building the plan.
+    # Duplicate IDs can cause incorrect sync behaviour (wrong document linked,
+    # or get_next_id raising an error that aborts creation).
+    duplicate_categories: Set[str] = set()
+    for category in categories:
+        category_path = get_category_path(cfs_root, category)
+        if check_duplicates(category_path):
+            duplicate_categories.add(category)
+    plan.duplicate_categories = duplicate_categories
 
     # Get all linked documents
     linked_docs = get_linked_documents(cfs_root, categories)
@@ -427,8 +466,25 @@ def build_sync_plan(
     # Find unlinked GitHub issues (need to create CFS documents)
     for issue in github_issues:
         if issue.number not in linked_github_numbers and issue.state.lower() == "open":
-            # Unlinked open issue -> create CFS document
+            # Determine target category from labels
             category = get_category_from_github_issue(issue, categories)
+
+            # Before scheduling CREATE_CFS, check whether a CFS document with
+            # the same title already exists in the target category.  This
+            # prevents creating a new (duplicate) doc when the existing one
+            # simply lacks the github_issue frontmatter link.
+            if category is not None:
+                existing_doc = _find_doc_by_title(all_docs.get(category, []), issue.title)
+                if existing_doc is not None:
+                    # A matching document already exists – skip creation.
+                    # The user should link them manually or run dedup.
+                    continue
+
+                # Also skip if the target category has duplicate IDs; attempting
+                # to create there would fail (get_next_id raises on duplicates).
+                if category in duplicate_categories:
+                    continue
+
             plan.add(
                 SyncItem(
                     action=SyncAction.CREATE_CFS,
@@ -930,6 +986,14 @@ def display_sync_status(console: Console, plan: SyncPlan) -> None:
         console: Rich console for output.
         plan: SyncPlan to display status for.
     """
+    # Warn about categories with duplicate IDs so users can dedup first.
+    if plan.duplicate_categories:
+        cats = ", ".join(sorted(plan.duplicate_categories))
+        console.print(
+            f"[red]Warning: Duplicate document IDs detected in: {cats}[/red]\n"
+            "[yellow]Run 'cfs gh dedup' to remove duplicates before syncing.[/yellow]"
+        )
+
     table = Table(title="Sync Status")
     table.add_column("Metric", style="cyan")
     table.add_column("Count", style="green")
@@ -937,6 +1001,11 @@ def display_sync_status(console: Console, plan: SyncPlan) -> None:
     table.add_row("Linked documents", str(plan.linked_count))
     table.add_row("Unlinked CFS documents", str(plan.unlinked_cfs_count))
     table.add_row("Unlinked GitHub issues", str(plan.unlinked_github_count))
+    if plan.duplicate_categories:
+        table.add_row(
+            "Categories with duplicates",
+            f"[red]{len(plan.duplicate_categories)}[/red]",
+        )
 
     # Count actions by type
     action_counts = {}

@@ -19,6 +19,7 @@ from cfs.documents import (
     move_document,
     parse_document_id,
     parse_document_id_from_string,
+    remove_duplicate_documents,
     unclose_document,
     uncomplete_document,
 )
@@ -975,3 +976,148 @@ class TestUncloseDocument:
 
         with pytest.raises(DocumentOperationError, match="not marked as closed"):
             unclose_document(category, 1)
+
+
+class TestAtomicRename:
+    """Tests ensuring complete/close/uncomplete/unclose produce no duplicate files."""
+
+    def test_complete_document_no_duplicate_left(self, tmp_path):
+        """After completing, only the DONE file should exist (no original)."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        original = category / "1-my-feature.md"
+        original.write_text("# My Feature\n\nContent\n")
+
+        result = complete_document(category, 1)
+
+        assert result == category / "1-DONE-my-feature.md"
+        assert result.exists()
+        # The original (non-DONE) file must NOT exist
+        assert not original.exists()
+        # Only one file in the directory
+        md_files = list(category.glob("*.md"))
+        assert len(md_files) == 1
+
+    def test_close_document_no_duplicate_left(self, tmp_path):
+        """After closing, only the CLOSED file should exist (no original)."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        original = category / "1-my-feature.md"
+        original.write_text("# My Feature\n\nContent\n")
+
+        result = close_document(category, 1)
+
+        assert result == category / "1-CLOSED-my-feature.md"
+        assert result.exists()
+        assert not original.exists()
+        md_files = list(category.glob("*.md"))
+        assert len(md_files) == 1
+
+    def test_uncomplete_document_no_duplicate_left(self, tmp_path):
+        """After uncompleting, only the original file should exist (no DONE)."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "1-DONE-my-feature.md"
+        done_file.write_text("# My Feature\n\nContent\n\n<!-- DONE -->\n")
+
+        result = uncomplete_document(category, 1)
+
+        assert result == category / "1-my-feature.md"
+        assert result.exists()
+        assert not done_file.exists()
+        md_files = list(category.glob("*.md"))
+        assert len(md_files) == 1
+
+    def test_unclose_document_no_duplicate_left(self, tmp_path):
+        """After unclosing, only the original file should exist (no CLOSED)."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        closed_file = category / "1-CLOSED-my-feature.md"
+        closed_file.write_text("# My Feature\n\nContent\n\n<!-- CLOSED -->\n")
+
+        result = unclose_document(category, 1)
+
+        assert result == category / "1-my-feature.md"
+        assert result.exists()
+        assert not closed_file.exists()
+        md_files = list(category.glob("*.md"))
+        assert len(md_files) == 1
+
+
+class TestRemoveDuplicateDocuments:
+    """Tests for remove_duplicate_documents function."""
+
+    def test_no_duplicates_returns_empty(self, tmp_path):
+        """Returns empty list when no duplicates exist."""
+        category = tmp_path / "features"
+        category.mkdir()
+        (category / "1-alpha.md").write_text("alpha")
+        (category / "2-beta.md").write_text("beta")
+
+        result = remove_duplicate_documents(category)
+        assert result == []
+
+    def test_removes_duplicate_keeping_done(self, tmp_path):
+        """Keeps DONE version when both DONE and incomplete share the same ID."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "15-DONE-my-feature.md"
+        plain_file = category / "15-my-feature.md"
+        done_file.write_text("done content")
+        plain_file.write_text("plain content")
+
+        result = remove_duplicate_documents(category, dry_run=False)
+
+        assert len(result) == 1
+        assert result[0]["kept"] == done_file
+        assert result[0]["path"] == plain_file
+        # plain file removed, done file kept
+        assert done_file.exists()
+        assert not plain_file.exists()
+
+    def test_dry_run_does_not_delete(self, tmp_path):
+        """Dry-run returns actions without deleting files."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "15-DONE-my-feature.md"
+        plain_file = category / "15-my-feature.md"
+        done_file.write_text("done content")
+        plain_file.write_text("plain content")
+
+        result = remove_duplicate_documents(category, dry_run=True)
+
+        assert len(result) == 1
+        # Both files still present
+        assert done_file.exists()
+        assert plain_file.exists()
+
+    def test_nonexistent_category_returns_empty(self, tmp_path):
+        """Returns empty list for a nonexistent category path."""
+        result = remove_duplicate_documents(tmp_path / "nonexistent")
+        assert result == []
+
+    def test_keeps_most_recently_modified_when_same_status(self, tmp_path):
+        """When both duplicates have same DONE status, keeps most recently modified."""
+        import time
+
+        category = tmp_path / "features"
+        category.mkdir()
+
+        older_done = category / "5-DONE-old-feature.md"
+        newer_done = category / "5-DONE-new-feature.md"
+        older_done.write_text("older")
+        time.sleep(0.05)
+        newer_done.write_text("newer")
+
+        result = remove_duplicate_documents(category, dry_run=False)
+
+        assert len(result) == 1
+        assert result[0]["kept"] == newer_done
+        assert newer_done.exists()
+        assert not older_done.exists()
