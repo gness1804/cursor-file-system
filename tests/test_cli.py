@@ -1449,7 +1449,6 @@ class TestTryAutoCreateGithubIssue:
 
     def test_creates_issue_and_links_document(self, tmp_path):
         """Should create GitHub issue and update document with frontmatter link."""
-        from unittest.mock import MagicMock
 
         from cfs.cli import _try_auto_create_github_issue
         from cfs.github import GitHubIssue
@@ -1534,7 +1533,6 @@ class TestTryAutoCloseGithubIssue:
 
     def test_skips_when_issue_already_closed(self, tmp_path):
         """Should silently skip when the linked GitHub issue is already closed."""
-        from unittest.mock import MagicMock
 
         from cfs.cli import _try_auto_close_github_issue
         from cfs.github import GitHubIssue

@@ -24,7 +24,6 @@ from cfs.documents import (
     kebab_case,
     list_documents,
     parse_document_id,
-    remove_duplicate_documents,
     set_github_issue_number,
 )
 from cfs.github import (
