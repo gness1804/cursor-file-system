@@ -1076,6 +1076,9 @@ def remove_duplicate_documents(
     1. DONE/CLOSED version (over incomplete)
     2. Most recently modified (if both same status)
 
+    Handles both ID-based duplicates (same numeric ID, different filenames) and
+    title-based duplicates (same title, different IDs).
+
     Args:
         category_path: Path to the category directory.
         dry_run: If True, return what would be removed without deleting.
@@ -1087,8 +1090,9 @@ def remove_duplicate_documents(
     if not category_path.exists():
         return []
 
-    # Collect files grouped by ID
+    # Collect files grouped by ID and by title
     ids: Dict[int, List[Path]] = {}
+    titles: Dict[str, List[Path]] = {}
     for file in category_path.iterdir():
         if not file.is_file() or file.suffix != ".md":
             continue
@@ -1096,29 +1100,30 @@ def remove_duplicate_documents(
         if parsed_id is None:
             continue
         ids.setdefault(parsed_id, []).append(file)
+        title = _extract_title_from_filename(file.name)
+        if title:
+            titles.setdefault(title, []).append(file)
 
     actions: List[Dict[str, Any]] = []
+    # Track paths already handled to avoid double-processing
+    removed_paths: set = set()
 
-    for doc_id, files in ids.items():
-        if len(files) <= 1:
-            continue
+    def _status_score(p: Path) -> tuple:
+        stem = p.stem
+        status_score = 2 if ("-DONE-" in stem or "-CLOSED-" in stem) else 0
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        return (status_score, mtime)
 
-        # Score each file: DONE/CLOSED = 2, else 0; add mtime as tiebreaker
-        def _score(p: Path) -> tuple:
-            stem = p.stem
-            status_score = 2 if (f"{doc_id}-DONE-" in stem or f"{doc_id}-CLOSED-" in stem) else 0
-            try:
-                mtime = p.stat().st_mtime
-            except OSError:
-                mtime = 0.0
-            return (status_score, mtime)
-
-        files_sorted = sorted(files, key=_score, reverse=True)
+    def _process_duplicates(files: List[Path]) -> None:
+        files_sorted = sorted(files, key=_status_score, reverse=True)
         keeper = files_sorted[0]
         to_remove = files_sorted[1:]
 
         for dup in to_remove:
-            action = {
+            action: Dict[str, Any] = {
                 "path": dup,
                 "kept": keeper,
                 "reason": f"Keeping {keeper.name} (better status/newer)",
@@ -1126,9 +1131,28 @@ def remove_duplicate_documents(
             if not dry_run:
                 try:
                     dup.unlink()
+                    removed_paths.add(dup)
                 except (OSError, PermissionError) as e:
                     action["error"] = str(e)
+            else:
+                removed_paths.add(dup)
             actions.append(action)
+
+    # Handle ID-based duplicates (same numeric ID)
+    for _doc_id, files in ids.items():
+        if len(files) <= 1:
+            continue
+        _process_duplicates(files)
+
+    # Handle title-based duplicates (same title, different IDs)
+    for _title, files in titles.items():
+        if len(files) <= 1:
+            continue
+        # Filter out files already removed in the ID-based pass
+        remaining = [f for f in files if f not in removed_paths]
+        if len(remaining) <= 1:
+            continue
+        _process_duplicates(remaining)
 
     return actions
 

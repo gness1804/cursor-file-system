@@ -1121,3 +1121,54 @@ class TestRemoveDuplicateDocuments:
         assert result[0]["kept"] == newer_done
         assert newer_done.exists()
         assert not older_done.exists()
+
+    def test_removes_title_based_duplicates_different_ids(self, tmp_path):
+        """Removes title-based duplicates when files share title but have different IDs."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "4-DONE-my-feature.md"
+        closed_file = category / "20-CLOSED-my-feature.md"
+        done_file.write_text("done content")
+        closed_file.write_text("closed content")
+
+        result = remove_duplicate_documents(category, dry_run=False)
+
+        assert len(result) == 1
+        # One file kept, one removed
+        remaining = [f for f in [done_file, closed_file] if f.exists()]
+        assert len(remaining) == 1
+
+    def test_title_duplicate_keeps_done_over_plain(self, tmp_path):
+        """Keeps DONE version over plain when title duplicates have different IDs."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "4-DONE-my-feature.md"
+        plain_file = category / "20-my-feature.md"
+        done_file.write_text("done content")
+        plain_file.write_text("plain content")
+
+        result = remove_duplicate_documents(category, dry_run=False)
+
+        assert len(result) == 1
+        assert result[0]["kept"] == done_file
+        assert done_file.exists()
+        assert not plain_file.exists()
+
+    def test_title_duplicate_dry_run(self, tmp_path):
+        """Dry-run does not delete title-based duplicates."""
+        category = tmp_path / "features"
+        category.mkdir()
+
+        done_file = category / "4-DONE-my-feature.md"
+        plain_file = category / "20-my-feature.md"
+        done_file.write_text("done content")
+        plain_file.write_text("plain content")
+
+        result = remove_duplicate_documents(category, dry_run=True)
+
+        assert len(result) == 1
+        # Both files still present after dry run
+        assert done_file.exists()
+        assert plain_file.exists()
