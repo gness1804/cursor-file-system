@@ -862,7 +862,7 @@ class TestUncompleteDocument:
         original_content = "# Test Bug\n\nContent\n"
         original_file.write_text(original_content)
 
-        completed_path = complete_document(category, 1)
+        complete_document(category, 1)
         uncompleted_path = uncomplete_document(category, 1)
 
         assert uncompleted_path == original_file

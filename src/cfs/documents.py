@@ -859,7 +859,7 @@ def uncomplete_document(category_path: Path, doc_id: int) -> Path:
         )
 
     # Extract the title part by stripping "{id}-DONE-"
-    title_part = stem[len(f"{doc_id}-DONE-"):]
+    title_part = stem[len(f"{doc_id}-DONE-") :]
 
     # Read current content
     try:
@@ -937,7 +937,7 @@ def unclose_document(category_path: Path, doc_id: int) -> Path:
         )
 
     # Extract the title part by stripping "{id}-CLOSED-"
-    title_part = stem[len(f"{doc_id}-CLOSED-"):]
+    title_part = stem[len(f"{doc_id}-CLOSED-") :]
 
     # Read current content
     try:
@@ -1067,9 +1067,7 @@ def close_document(category_path: Path, doc_id: int) -> Path:
     return new_path
 
 
-def remove_duplicate_documents(
-    category_path: Path, dry_run: bool = False
-) -> List[Dict[str, Any]]:
+def remove_duplicate_documents(category_path: Path, dry_run: bool = False) -> List[Dict[str, Any]]:
     """Remove duplicate documents from a category, keeping the best version.
 
     When duplicates exist, preference order for keeping:

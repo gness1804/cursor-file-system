@@ -1454,7 +1454,9 @@ class TestTryAutoCreateGithubIssue:
         from cfs.github import GitHubIssue
 
         doc_path = tmp_path / "1-test-bug.md"
-        doc_path.write_text("# Test Bug\n\n## Contents\n\nSome content\n\n## Acceptance criteria\n\nDone\n")
+        doc_path.write_text(
+            "# Test Bug\n\n## Contents\n\nSome content\n\n## Acceptance criteria\n\nDone\n"
+        )
 
         mock_issue = GitHubIssue(
             number=99,
@@ -1511,7 +1513,9 @@ class TestTryAutoCloseGithubIssue:
         from cfs.cli import _try_auto_close_github_issue
 
         doc_path = tmp_path / "1-DONE-test.md"
-        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+        doc_path.write_text(
+            "---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n"
+        )
 
         with patch("cfs.github.check_gh_installed", return_value=False):
             with patch("cfs.github.close_issue") as mock_close:
@@ -1523,7 +1527,9 @@ class TestTryAutoCloseGithubIssue:
         from cfs.cli import _try_auto_close_github_issue
 
         doc_path = tmp_path / "1-DONE-test.md"
-        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+        doc_path.write_text(
+            "---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n"
+        )
 
         with patch("cfs.github.check_gh_installed", return_value=True):
             with patch("cfs.github.check_gh_authenticated", return_value=False):
@@ -1538,7 +1544,9 @@ class TestTryAutoCloseGithubIssue:
         from cfs.github import GitHubIssue
 
         doc_path = tmp_path / "1-DONE-test.md"
-        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+        doc_path.write_text(
+            "---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n"
+        )
 
         already_closed_issue = GitHubIssue(
             number=42,
@@ -1562,7 +1570,9 @@ class TestTryAutoCloseGithubIssue:
         from cfs.github import GitHubIssue
 
         doc_path = tmp_path / "1-DONE-test.md"
-        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+        doc_path.write_text(
+            "---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n"
+        )
 
         open_issue = GitHubIssue(
             number=42,
@@ -1586,7 +1596,9 @@ class TestTryAutoCloseGithubIssue:
         from cfs.github import GitHubAPIError
 
         doc_path = tmp_path / "1-DONE-test.md"
-        doc_path.write_text("---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n")
+        doc_path.write_text(
+            "---\ngithub_issue: 42\n---\n# Test\n\n## Contents\n\nHello\n<!-- DONE -->\n"
+        )
 
         with patch("cfs.github.check_gh_installed", return_value=True):
             with patch("cfs.github.check_gh_authenticated", return_value=True):
@@ -1608,7 +1620,15 @@ class TestCreateCommandWithGithubAutoSync:
             with patch("cfs.github.check_gh_installed", return_value=False):
                 result = runner.invoke(
                     app,
-                    ["instructions", "bugs", "create", "--title", "Auto Sync Bug", "--content", "Some content"],
+                    [
+                        "instructions",
+                        "bugs",
+                        "create",
+                        "--title",
+                        "Auto Sync Bug",
+                        "--content",
+                        "Some content",
+                    ],
                 )
 
             assert result.exit_code == 0

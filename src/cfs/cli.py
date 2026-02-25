@@ -145,7 +145,11 @@ def _try_auto_create_github_issue(category: str, doc_path: Path, title: str) -> 
         doc_path: Path to the newly created CFS document.
         title: Document title (used as the GitHub issue title).
     """
-    from cfs.documents import build_github_issue_body, get_github_issue_number, set_github_issue_number
+    from cfs.documents import (
+        build_github_issue_body,
+        get_github_issue_number,
+        set_github_issue_number,
+    )
     from cfs.github import (
         GitHubError,
         check_gh_authenticated,
