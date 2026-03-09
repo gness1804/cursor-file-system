@@ -83,6 +83,25 @@ class TestComputeSyncCategories:
         cats = compute_sync_categories(include_categories={"tmp", "security"})
         assert cats == VALID_CATEGORIES
 
+    def test_repo_hidden_custom_category_excluded_by_default(self, tmp_path):
+        """Repo-configured hidden custom categories are excluded by default."""
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        (cursor_dir / "work").mkdir()
+        (cursor_dir / ".cfs-categories.json").write_text(
+            '{"hidden_categories": ["work"]}\n',
+            encoding="utf-8",
+        )
+
+        cats = compute_sync_categories(cursor_dir)
+        assert "work" not in cats
+
+        cats_with_include = compute_sync_categories(
+            cursor_dir,
+            include_categories={"work"},
+        )
+        assert "work" in cats_with_include
+
 
 class TestSyncItem:
     """Tests for SyncItem dataclass."""

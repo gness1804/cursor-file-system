@@ -1,5 +1,6 @@
 """Integration tests for CLI commands."""
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -211,6 +212,62 @@ class TestCreateCommand:
             assert result.exit_code == 0
             # Should not contain editor selection text
             assert "Select an editor" not in result.stdout
+
+
+class TestCategoryCommand:
+    """Tests for `cfs instructions category` commands."""
+
+    def test_create_custom_category(self, runner, tmp_path):
+        """Create a custom category directory."""
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+
+            result = runner.invoke(app, ["instructions", "category", "create", "work"])
+
+            assert result.exit_code == 0
+            assert (cursor_dir / "work").exists()
+
+    def test_create_custom_category_hidden(self, runner, tmp_path):
+        """Creating with --hidden persists hidden category config."""
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+
+            result = runner.invoke(
+                app,
+                ["instructions", "category", "create", "work", "--hidden"],
+            )
+
+            assert result.exit_code == 0
+            config_path = cursor_dir / ".cfs-categories.json"
+            assert config_path.exists()
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            assert "work" in config["hidden_categories"]
+
+    def test_use_custom_category_after_create(self, runner, tmp_path):
+        """Custom category can be used with standard category commands."""
+        with runner.isolated_filesystem(tmp_path):
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+
+            create_result = runner.invoke(app, ["instructions", "category", "create", "work"])
+            assert create_result.exit_code == 0
+
+            doc_result = runner.invoke(
+                app,
+                [
+                    "instructions",
+                    "work",
+                    "create",
+                    "--title",
+                    "Weekly Plan",
+                    "--content",
+                    "Plan sprint work",
+                ],
+            )
+            assert doc_result.exit_code == 0
+            assert (cursor_dir / "work" / "1-weekly-plan.md").exists()
 
 
 class TestEditCommand:

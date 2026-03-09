@@ -58,22 +58,6 @@ def gh_sync(
         execute_sync_plan,
     )
 
-    # Compute effective sync categories
-    inc = set(include_categories) if include_categories else None
-    exc = set(exclude_categories) if exclude_categories else None
-    sync_cats = compute_sync_categories(inc, exc)
-
-    # Validate user-provided categories
-    for cat_list in [include_categories, exclude_categories]:
-        if cat_list:
-            for cat in cat_list:
-                if cat not in core.VALID_CATEGORIES:
-                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
-                    console.print(
-                        f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
-                    )
-                    raise typer.Exit(1)
-
     # Check prerequisites
     if not check_gh_installed():
         console.print(
@@ -95,6 +79,24 @@ def gh_sync(
     except CFSNotFoundError as e:
         handle_cfs_error(e)
         raise typer.Exit(1)
+
+    valid_categories = core.get_all_categories(cfs_root)
+
+    # Compute effective sync categories
+    inc = set(include_categories) if include_categories else None
+    exc = set(exclude_categories) if exclude_categories else None
+    sync_cats = compute_sync_categories(cfs_root, inc, exc)
+
+    # Validate user-provided categories
+    for cat_list in [include_categories, exclude_categories]:
+        if cat_list:
+            for cat in cat_list:
+                if cat not in valid_categories:
+                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
+                    console.print(
+                        f"[yellow]Valid categories: {', '.join(sorted(valid_categories))}[/yellow]"
+                    )
+                    raise typer.Exit(1)
 
     # Show which categories are being synced if non-default
     if inc or exc:
@@ -161,22 +163,6 @@ def gh_status(
     )
     from cfs.sync import build_sync_plan, compute_sync_categories, display_sync_status
 
-    # Compute effective sync categories
-    inc = set(include_categories) if include_categories else None
-    exc = set(exclude_categories) if exclude_categories else None
-    sync_cats = compute_sync_categories(inc, exc)
-
-    # Validate user-provided categories
-    for cat_list in [include_categories, exclude_categories]:
-        if cat_list:
-            for cat in cat_list:
-                if cat not in core.VALID_CATEGORIES:
-                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
-                    console.print(
-                        f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
-                    )
-                    raise typer.Exit(1)
-
     # Check prerequisites
     if not check_gh_installed():
         console.print(
@@ -198,6 +184,24 @@ def gh_status(
     except CFSNotFoundError as e:
         handle_cfs_error(e)
         raise typer.Exit(1)
+
+    valid_categories = core.get_all_categories(cfs_root)
+
+    # Compute effective sync categories
+    inc = set(include_categories) if include_categories else None
+    exc = set(exclude_categories) if exclude_categories else None
+    sync_cats = compute_sync_categories(cfs_root, inc, exc)
+
+    # Validate user-provided categories
+    for cat_list in [include_categories, exclude_categories]:
+        if cat_list:
+            for cat in cat_list:
+                if cat not in valid_categories:
+                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
+                    console.print(
+                        f"[yellow]Valid categories: {', '.join(sorted(valid_categories))}[/yellow]"
+                    )
+                    raise typer.Exit(1)
 
     # Show which categories are being synced if non-default
     if inc or exc:
@@ -229,19 +233,17 @@ def gh_link(
     from cfs import documents
     from cfs.github import add_labels, ensure_label_exists, get_cfs_label_for_category
 
-    # Validate category
-    if category not in core.VALID_CATEGORIES:
-        console.print(f"[red]Error: Invalid category '{category}'[/red]")
-        console.print(
-            f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
-        )
-        raise typer.Exit(1)
-
     # Find CFS root
     try:
         cfs_root = core.find_cfs_root()
     except CFSNotFoundError as e:
         handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    valid_categories = core.get_all_categories(cfs_root)
+    if category not in valid_categories:
+        console.print(f"[red]Error: Invalid category '{category}'[/red]")
+        console.print(f"[yellow]Valid categories: {', '.join(sorted(valid_categories))}[/yellow]")
         raise typer.Exit(1)
 
     category_path = core.get_category_path(cfs_root, category)
@@ -292,19 +294,17 @@ def gh_unlink(
     """
     from cfs import documents
 
-    # Validate category
-    if category not in core.VALID_CATEGORIES:
-        console.print(f"[red]Error: Invalid category '{category}'[/red]")
-        console.print(
-            f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
-        )
-        raise typer.Exit(1)
-
     # Find CFS root
     try:
         cfs_root = core.find_cfs_root()
     except CFSNotFoundError as e:
         handle_cfs_error(e)
+        raise typer.Exit(1)
+
+    valid_categories = core.get_all_categories(cfs_root)
+    if category not in valid_categories:
+        console.print(f"[red]Error: Invalid category '{category}'[/red]")
+        console.print(f"[yellow]Valid categories: {', '.join(sorted(valid_categories))}[/yellow]")
         raise typer.Exit(1)
 
     category_path = core.get_category_path(cfs_root, category)
@@ -373,27 +373,6 @@ def gh_purge_excluded(
     )
     from cfs.sync import compute_sync_categories
 
-    # Compute which categories are excluded (i.e. what to purge)
-    inc = set(include_categories) if include_categories else None
-    exc = set(exclude_categories) if exclude_categories else None
-    sync_cats = compute_sync_categories(inc, exc)
-    excluded_cats = core.VALID_CATEGORIES - sync_cats
-
-    # Validate user-provided categories
-    for cat_list in [include_categories, exclude_categories]:
-        if cat_list:
-            for cat in cat_list:
-                if cat not in core.VALID_CATEGORIES:
-                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
-                    console.print(
-                        f"[yellow]Valid categories: {', '.join(sorted(core.VALID_CATEGORIES))}[/yellow]"
-                    )
-                    raise typer.Exit(1)
-
-    if not excluded_cats:
-        console.print("[yellow]No categories are excluded. Nothing to purge.[/yellow]")
-        return
-
     # Check prerequisites
     if not check_gh_installed():
         console.print(
@@ -415,6 +394,29 @@ def gh_purge_excluded(
     except CFSNotFoundError as e:
         handle_cfs_error(e)
         raise typer.Exit(1)
+
+    valid_categories = core.get_all_categories(cfs_root)
+
+    # Compute which categories are excluded (i.e. what to purge)
+    inc = set(include_categories) if include_categories else None
+    exc = set(exclude_categories) if exclude_categories else None
+    sync_cats = compute_sync_categories(cfs_root, inc, exc)
+    excluded_cats = valid_categories - sync_cats
+
+    # Validate user-provided categories
+    for cat_list in [include_categories, exclude_categories]:
+        if cat_list:
+            for cat in cat_list:
+                if cat not in valid_categories:
+                    console.print(f"[red]Error: Invalid category '{cat}'[/red]")
+                    console.print(
+                        f"[yellow]Valid categories: {', '.join(sorted(valid_categories))}[/yellow]"
+                    )
+                    raise typer.Exit(1)
+
+    if not excluded_cats:
+        console.print("[yellow]No categories are excluded. Nothing to purge.[/yellow]")
+        return
 
     console.print(
         f"[yellow]Purging GitHub issues for excluded categories: "

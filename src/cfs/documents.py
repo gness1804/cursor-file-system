@@ -435,15 +435,16 @@ def list_documents(
             ...
         }
     """
-    from cfs.core import VALID_CATEGORIES, get_category_path
+    from cfs.core import get_all_categories, get_category_path
 
     documents: Dict[str, List[Dict[str, Any]]] = {}
 
+    all_categories = get_all_categories(cfs_root)
     # Determine which categories to list
-    categories_to_list = [category] if category else VALID_CATEGORIES
+    categories_to_list = [category] if category else all_categories
 
     for cat in categories_to_list:
-        if cat not in VALID_CATEGORIES:
+        if cat not in all_categories:
             continue
 
         category_path = get_category_path(cfs_root, cat)

@@ -149,10 +149,11 @@ def _try_auto_create_github_issue(category: str, doc_path: Path, title: str) -> 
         ensure_label_exists,
         get_cfs_label_for_category,
     )
-    from cfs.sync import DEFAULT_EXCLUDED_CATEGORIES
+    from cfs.core import get_hidden_categories
 
-    # Skip categories that are excluded from GitHub sync by default
-    if category in DEFAULT_EXCLUDED_CATEGORIES:
+    cfs_root = doc_path.parent.parent
+    # Skip categories that are hidden from GitHub sync by default
+    if category in get_hidden_categories(cfs_root):
         return
 
     # Check if gh is available and authenticated (silently skip if not)
