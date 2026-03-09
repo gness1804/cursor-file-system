@@ -404,6 +404,10 @@ The generated file includes:
 - `cfs instructions <category> complete <id> [--force/-y]` - Mark document as done (requires confirmation)
 - `cfs instructions <category> order` - Order documents by naming convention
 - `cfs instructions next <category>` - Find and work on the next unresolved issue
+- `cfs instructions category create <name> [--hidden]` - Create a custom category folder
+- `cfs instructions category hide <name>` - Hide a category from GitHub sync by default
+- `cfs instructions category unhide <name>` - Unhide a category for GitHub sync by default
+- `cfs instructions category list` - List built-in/custom categories and sync visibility
 - `cfs instructions handoff` - Generate instructions for creating a handoff document
 - `cfs instructions handoff pickup` - Pick up the first incomplete handoff document
 
@@ -431,6 +435,8 @@ Bidirectional sync between CFS documents and GitHub issues:
 - Use `--include-category` (`-ic`) to force-include a default-excluded category (e.g., `--include-category security`)
 - Use `--exclude-category` (`-ec`) to exclude additional categories (e.g., `--exclude-category progress`)
 - Both flags can be used multiple times
+- Custom categories can be hidden from sync with `cfs instructions category create <name> --hidden`
+  or `cfs instructions category hide <name>`
 
 **Purging excluded issues:** If you have existing GitHub issues for categories you now want excluded, use `cfs gh purge-excluded` to permanently delete those GitHub issues while preserving the local CFS documents.
 
@@ -446,6 +452,23 @@ Bidirectional sync between CFS documents and GitHub issues:
 - `security` - Security-related documents
 - `tmp` - Temporary files for Cursor agent use
 - `rules` - Rules used by Cursor (automatically read by Cursor agents)
+
+### Custom Categories
+
+You can create repo-specific custom categories under `.cursor`:
+
+```bash
+cfs instructions category create work
+cfs instructions work create --title "Weekly Planning"
+```
+
+To hide a custom category from GitHub sync by default:
+
+```bash
+cfs instructions category create security-review --hidden
+# or later:
+cfs instructions category hide security-review
+```
 
 ## Cursor File Structure (CFS)
 
@@ -467,7 +490,9 @@ The CFS organizes documents into a `.cursor` directory with the following struct
 ├── progress/                  # Progress tracking
 ├── qa/                        # Testing and QA
 ├── security/                  # Security documents
-└── tmp/                       # Temporary files
+├── tmp/                       # Temporary files
+├── work/                      # Example custom category
+└── .cfs-categories.json       # Optional hidden-category config
 ```
 
 ### Document Naming
@@ -696,7 +721,7 @@ The project uses:
 
 ### Issue: "Invalid category" error
 
-**Solution**: Use one of the valid categories: `bugs`, `features`, `research`, `refactors`, `docs`, `progress`, `qa`, `security`, `tmp`, or `rules`.
+**Solution**: Use one of the built-in categories (`bugs`, `features`, `research`, `refactors`, `docs`, `progress`, `qa`, `security`, `tmp`, `rules`) or create a custom one first with `cfs instructions category create <name>`.
 
 ### Issue: Editor doesn't open
 
@@ -731,4 +756,3 @@ which cfs  # Should show path to cfs command
 ## License
 
 MIT
-

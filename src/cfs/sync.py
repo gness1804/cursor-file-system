@@ -12,7 +12,12 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.table import Table
 
-from cfs.core import VALID_CATEGORIES, get_category_path
+from cfs.core import (
+    BUILTIN_CATEGORIES,
+    get_all_categories,
+    get_category_path,
+    get_hidden_categories,
+)
 from cfs.documents import (
     build_github_issue_body,
     check_duplicates,
@@ -43,10 +48,11 @@ from cfs.github import (
 DEFAULT_EXCLUDED_CATEGORIES = {"tmp", "security"}
 
 # Default categories that should be synced
-SYNC_CATEGORIES = VALID_CATEGORIES - DEFAULT_EXCLUDED_CATEGORIES
+SYNC_CATEGORIES = BUILTIN_CATEGORIES - DEFAULT_EXCLUDED_CATEGORIES
 
 
 def compute_sync_categories(
+    cfs_root: Optional[Path] = None,
     include_categories: Optional[Set[str]] = None,
     exclude_categories: Optional[Set[str]] = None,
 ) -> Set[str]:
@@ -59,12 +65,13 @@ def compute_sync_categories(
     Returns:
         Set of category names to sync.
     """
-    excluded = set(DEFAULT_EXCLUDED_CATEGORIES)
+    valid_categories = get_all_categories(cfs_root) if cfs_root else set(BUILTIN_CATEGORIES)
+    excluded = get_hidden_categories(cfs_root) if cfs_root else set(DEFAULT_EXCLUDED_CATEGORIES)
     if include_categories:
         excluded -= include_categories
     if exclude_categories:
         excluded |= exclude_categories
-    return VALID_CATEGORIES - excluded
+    return valid_categories - excluded
 
 
 class SyncAction(Enum):

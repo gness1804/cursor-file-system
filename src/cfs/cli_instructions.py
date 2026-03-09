@@ -36,23 +36,132 @@ handoff_app = typer.Typer(
     invoke_without_command=True,
 )
 instructions_app.add_typer(handoff_app, name="handoff")
+category_admin_app = typer.Typer(
+    name="category",
+    help="Manage custom instruction categories",
+)
+instructions_app.add_typer(category_admin_app, name="category")
 
 
 # =============================================================================
 # Dynamic Category Commands
 # =============================================================================
 
+_REGISTERED_CATEGORY_COMMANDS: set[str] = set()
 
-def create_category_commands() -> None:
+
+@category_admin_app.command("create")
+def create_category_command(
+    name: str = typer.Argument(..., help="Custom category name (kebab-case)"),
+    hidden: bool = typer.Option(
+        False,
+        "--hidden",
+        help="Hide this category from GitHub sync by default",
+    ),
+) -> None:
+    """Create a custom category directory under .cursor."""
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    try:
+        category_path = core.create_custom_category(cfs_root, name, hidden=hidden)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Abort()
+    except OSError as e:
+        console.print(f"[red]Error: Could not create category '{name}': {e}[/red]")
+        raise typer.Abort()
+
+    create_category_commands({name})
+    hidden_note = " (hidden from GitHub sync by default)" if hidden else ""
+    console.print(f"[green]✓ Created category: {category_path.name}{hidden_note}[/green]")
+
+
+@category_admin_app.command("hide")
+def hide_category_command(
+    name: str = typer.Argument(..., help="Category name"),
+) -> None:
+    """Hide a category from GitHub sync by default."""
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    if not core.validate_category(name, cfs_root):
+        console.print(f"[red]Error: Invalid category '{name}'[/red]")
+        console.print(
+            f"[yellow]Valid categories: {', '.join(sorted(core.get_all_categories(cfs_root)))}[/yellow]"
+        )
+        raise typer.Abort()
+
+    core.set_category_hidden(cfs_root, name, True)
+    console.print(f"[green]✓ Category '{name}' is now hidden from GitHub sync by default[/green]")
+
+
+@category_admin_app.command("unhide")
+def unhide_category_command(
+    name: str = typer.Argument(..., help="Category name"),
+) -> None:
+    """Unhide a category so it syncs to GitHub by default."""
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    if not core.validate_category(name, cfs_root):
+        console.print(f"[red]Error: Invalid category '{name}'[/red]")
+        console.print(
+            f"[yellow]Valid categories: {', '.join(sorted(core.get_all_categories(cfs_root)))}[/yellow]"
+        )
+        raise typer.Abort()
+
+    core.set_category_hidden(cfs_root, name, False)
+    console.print(f"[green]✓ Category '{name}' will now sync to GitHub by default[/green]")
+
+
+@category_admin_app.command("list")
+def list_category_command() -> None:
+    """List all categories and whether each is hidden from GitHub sync."""
+    try:
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    hidden_categories = core.get_hidden_categories(cfs_root)
+    all_categories = sorted(core.get_all_categories(cfs_root))
+    custom_categories = core.get_custom_categories(cfs_root)
+
+    table = Table(title="CFS Categories", box=box.ROUNDED)
+    table.add_column("Category", style="cyan")
+    table.add_column("Type", style="magenta")
+    table.add_column("GitHub Sync", style="green")
+
+    for category in all_categories:
+        category_type = "Custom" if category in custom_categories else "Built-in"
+        sync_state = "Hidden" if category in hidden_categories else "Visible"
+        table.add_row(category, category_type, sync_state)
+
+    console.print(table)
+
+
+def create_category_commands(categories: Optional[set[str]] = None) -> None:
     """Create commands for each category dynamically."""
-    for category in core.VALID_CATEGORIES:
+    categories_to_register = categories or core.categories_for_command_registration()
+    for category in sorted(categories_to_register):
         # Skip 'rules' as it has its own command group
-        if category == "rules":
+        if category == "rules" or category in _REGISTERED_CATEGORY_COMMANDS:
             continue
 
         # Create a Typer app for this category
         category_app = typer.Typer(name=category, help=f"Manage {category} documents")
         instructions_app.add_typer(category_app, name=category)
+        _REGISTERED_CATEGORY_COMMANDS.add(category)
 
         # Create all commands for this category with proper closure capture
         def make_category_commands(cat: str):

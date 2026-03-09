@@ -4,8 +4,11 @@ import pytest
 
 from cfs.core import (
     VALID_CATEGORIES,
+    create_custom_category,
     find_cfs_root,
+    get_all_categories,
     get_category_path,
+    get_hidden_categories,
     validate_category,
 )
 from cfs.exceptions import CFSNotFoundError, InvalidCategoryError
@@ -84,6 +87,15 @@ class TestGetCategoryPath:
         with pytest.raises(InvalidCategoryError):
             get_category_path(cursor_dir, "BUGS")  # Should be "bugs"
 
+    def test_get_category_path_custom_category(self, tmp_path):
+        """Test getting path for a custom category folder."""
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        (cursor_dir / "work").mkdir()
+
+        result = get_category_path(cursor_dir, "work")
+        assert result == cursor_dir / "work"
+
 
 class TestValidateCategory:
     """Tests for validate_category function."""
@@ -98,6 +110,13 @@ class TestValidateCategory:
         assert validate_category("invalid") is False
         assert validate_category("") is False
         assert validate_category("BUGS") is False  # Case-sensitive
+
+    def test_validate_category_custom_with_cfs_root(self, tmp_path):
+        """Custom categories validate when cfs_root is provided."""
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        (cursor_dir / "work").mkdir()
+        assert validate_category("work", cursor_dir) is True
 
     def test_validate_category_all_valid_categories(self):
         """Test that all expected categories are valid."""
@@ -114,3 +133,17 @@ class TestValidateCategory:
             "tmp",
         }
         assert VALID_CATEGORIES == expected_categories
+
+
+class TestCustomCategoryConfig:
+    """Tests for custom category creation/config helpers."""
+
+    def test_create_custom_category_hidden(self, tmp_path):
+        """Creating a hidden custom category persists hidden config."""
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+
+        category_path = create_custom_category(cursor_dir, "work", hidden=True)
+        assert category_path.exists()
+        assert "work" in get_all_categories(cursor_dir)
+        assert "work" in get_hidden_categories(cursor_dir)
