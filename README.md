@@ -2,6 +2,8 @@
 
 A command-line tool for managing Cursor instruction documents within an opinionated file structure framework.
 
+<img width="1199" height="384" alt="CFS screenshot" src="https://github.com/user-attachments/assets/2e841c76-4413-4354-b695-d84c7db422f0" />
+
 ## Overview
 
 CFS (Cursor File Structure) CLI enables developers to create, edit, view, and delete Cursor instruction documents in a structured way. These documents help organize work for Cursor AI agents across different stages of a project.
