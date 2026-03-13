@@ -667,8 +667,21 @@ def order_documents(category_path: Path, dry_run: bool = True) -> List[Dict[str,
         file_path = file_info["path"]
         title = file_info["title"]
 
-        # Convert title to kebab-case
-        kebab_title = kebab_case(title)
+        # Preserve status markers (DONE, CLOSED) before kebab-casing
+        status_marker = None
+        title_without_marker = title
+        for marker in ("DONE-", "CLOSED-"):
+            if title.startswith(marker):
+                status_marker = marker
+                title_without_marker = title[len(marker) :]
+                break
+
+        # Convert title (without marker) to kebab-case
+        kebab_title = kebab_case(title_without_marker)
+
+        # Re-apply status marker if it was present
+        if status_marker and kebab_title:
+            kebab_title = status_marker + kebab_title
 
         # Find next available ID (handle conflicts)
         while next_id in used_ids:
