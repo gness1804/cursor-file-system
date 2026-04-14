@@ -13,6 +13,4 @@ When there's a closed issue on GitHub that I discover I want to work on again (f
 
 ## Acceptance criteria
 
-- When I reopen an issue on GitHub and then run `cfs gh sync`, it will reopen the local CFS issue. 
-
-<!-- DONE -->
+- When I reopen an issue on GitHub and then run `cfs gh sync`, it will reopen the local CFS issue.
