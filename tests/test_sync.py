@@ -425,8 +425,8 @@ class TestBuildSyncPlan:
         ]
         assert len(conflict_actions) == 1
 
-    def test_status_mismatch_cfs_done(self, tmp_path):
-        """Test sync plan detects when CFS is done but GitHub is open."""
+    def test_status_mismatch_cfs_done_github_reopened(self, tmp_path):
+        """Test sync plan reopens CFS when CFS is done but GitHub is open (reopened)."""
         cfs_root = tmp_path / ".cursor"
         cfs_root.mkdir()
         features = cfs_root / "features"
@@ -448,8 +448,36 @@ class TestBuildSyncPlan:
         plan = build_sync_plan(cfs_root, github_issues)
 
         actions = plan.get_actions()
-        close_actions = [a for a in actions if a.action == SyncAction.CLOSE_GITHUB]
-        assert len(close_actions) == 1
+        reopen_actions = [a for a in actions if a.action == SyncAction.REOPEN_CFS]
+        assert len(reopen_actions) == 1
+
+    def test_status_mismatch_cfs_closed_github_reopened(self, tmp_path):
+        """Test sync plan reopens CFS when CFS is closed but GitHub is open (reopened)."""
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        bugs = cfs_root / "bugs"
+        bugs.mkdir()
+
+        doc = bugs / "1-CLOSED-test-bug.md"
+        doc.write_text(
+            "---\ngithub_issue: 99\n---\n# Test Bug\n\n## Contents\n\nClosed.\n\n<!-- CLOSED -->\n"
+        )
+
+        github_issues = [
+            GitHubIssue(
+                number=99,
+                title="Test Bug",
+                body="Closed.",
+                state="open",
+                labels=["cfs:bugs"],
+                url="",
+            )
+        ]
+        plan = build_sync_plan(cfs_root, github_issues)
+
+        actions = plan.get_actions()
+        reopen_actions = [a for a in actions if a.action == SyncAction.REOPEN_CFS]
+        assert len(reopen_actions) == 1
 
     def test_status_mismatch_github_closed(self, tmp_path):
         """Test sync plan detects when GitHub is closed but CFS is open."""
@@ -612,6 +640,102 @@ class TestExecuteSyncPlan:
         call_args = mock_console.print.call_args[0][0]
         assert "Error: Content conflict" in call_args
         assert "Run in an interactive shell to resolve" in call_args
+
+    @patch("cfs.sync.uncomplete_document")
+    def test_execute_reopen_cfs_done_doc(self, mock_uncomplete, tmp_path):
+        """REOPEN_CFS calls uncomplete_document for a DONE-prefixed file."""
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = True
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        (cfs_root / "bugs").mkdir()
+
+        doc_path = cfs_root / "bugs" / "1-DONE-test-bug.md"
+        doc_path.write_text(
+            "---\ngithub_issue: 5\n---\n# Test Bug\n\n## Contents\n\nDone.\n\n<!-- DONE -->\n"
+        )
+
+        issue = GitHubIssue(
+            number=5, title="Test Bug", body="Done.", state="open", labels=[], url=""
+        )
+        item = SyncItem(
+            action=SyncAction.REOPEN_CFS,
+            category="bugs",
+            cfs_doc_id=1,
+            cfs_doc_path=doc_path,
+            github_issue=issue,
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        assert results["reopened_cfs"] == 1
+        mock_uncomplete.assert_called_once()
+
+    @patch("cfs.sync.unclose_document")
+    def test_execute_reopen_cfs_closed_doc(self, mock_unclose, tmp_path):
+        """REOPEN_CFS calls unclose_document for a CLOSED-prefixed file."""
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = True
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        (cfs_root / "bugs").mkdir()
+
+        doc_path = cfs_root / "bugs" / "1-CLOSED-test-bug.md"
+        doc_path.write_text(
+            "---\ngithub_issue: 5\n---\n# Test Bug\n\n## Contents\n\nClosed.\n\n<!-- CLOSED -->\n"
+        )
+
+        issue = GitHubIssue(
+            number=5, title="Test Bug", body="Closed.", state="open", labels=[], url=""
+        )
+        item = SyncItem(
+            action=SyncAction.REOPEN_CFS,
+            category="bugs",
+            cfs_doc_id=1,
+            cfs_doc_path=doc_path,
+            github_issue=issue,
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        assert results["reopened_cfs"] == 1
+        mock_unclose.assert_called_once()
+
+    def test_execute_reopen_cfs_dry_run(self, tmp_path):
+        """REOPEN_CFS dry-run prints message but does not modify documents."""
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = True
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+        (cfs_root / "features").mkdir()
+
+        doc_path = cfs_root / "features" / "1-DONE-test-feature.md"
+        doc_path.write_text(
+            "---\ngithub_issue: 10\n---\n# Test Feature\n\n## Contents\n\nDone.\n\n<!-- DONE -->\n"
+        )
+
+        issue = GitHubIssue(
+            number=10, title="Test Feature", body="Done.", state="open", labels=[], url=""
+        )
+        item = SyncItem(
+            action=SyncAction.REOPEN_CFS,
+            category="features",
+            cfs_doc_id=1,
+            cfs_doc_path=doc_path,
+            github_issue=issue,
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan, dry_run=True)
+
+        assert results["reopened_cfs"] == 0
+        # Verify the file was not modified
+        assert "DONE" in doc_path.stem
 
 
 class TestBuildSyncPlanDuplicates:
