@@ -30,6 +30,8 @@ from cfs.documents import (
     list_documents,
     parse_document_id,
     set_github_issue_number,
+    uncomplete_document,
+    unclose_document,
 )
 from cfs.github import (
     GitHubIssue,
@@ -81,6 +83,7 @@ class SyncAction(Enum):
     CREATE_GITHUB = "create_github"  # Create GitHub issue from CFS doc
     CLOSE_GITHUB = "close_github"  # Close GitHub issue (CFS is done/closed)
     COMPLETE_CFS = "complete_cfs"  # Mark CFS as done (GitHub is closed)
+    REOPEN_CFS = "reopen_cfs"  # Reopen CFS doc (GitHub was reopened)
     CONTENT_CONFLICT = "content_conflict"  # Content differs, needs resolution
     NO_ACTION = "no_action"  # Already in sync
 
@@ -107,6 +110,8 @@ class SyncItem:
             return f"Close GitHub #{self.github_issue.number} (CFS {self.category}/{self.cfs_doc_id} is done)"
         elif self.action == SyncAction.COMPLETE_CFS:
             return f"Mark {self.category}/{self.cfs_doc_id} as done (GitHub #{self.github_issue.number} is closed)"
+        elif self.action == SyncAction.REOPEN_CFS:
+            return f"Reopen {self.category}/{self.cfs_doc_id} (GitHub #{self.github_issue.number} was reopened)"
         elif self.action == SyncAction.CONTENT_CONFLICT:
             return f"Content conflict: {self.category}/{self.cfs_doc_id} vs GitHub #{self.github_issue.number}"
         return "No action needed"
@@ -387,10 +392,10 @@ def build_sync_plan(
 
         # Check for status mismatch
         if cfs_is_done and not github_is_closed:
-            # CFS is done but GitHub is open -> close GitHub
+            # CFS is done but GitHub is open -> GitHub was reopened, reopen CFS
             plan.add(
                 SyncItem(
-                    action=SyncAction.CLOSE_GITHUB,
+                    action=SyncAction.REOPEN_CFS,
                     category=category,
                     cfs_doc_id=doc_id,
                     cfs_doc_path=doc_path,
@@ -686,6 +691,7 @@ def execute_sync_plan(
         "created_github": 0,
         "closed_github": 0,
         "completed_cfs": 0,
+        "reopened_cfs": 0,
         "resolved_conflicts": 0,
         "skipped": 0,
         "errors": 0,
@@ -754,6 +760,20 @@ def execute_sync_plan(
                         f"[green]Marked {item.category}/{item.cfs_doc_id} as done[/green]"
                     )
                     results["completed_cfs"] += 1
+
+            elif item.action == SyncAction.REOPEN_CFS:
+                if dry_run:
+                    console.print(f"[dim]Would reopen {item.category}/{item.cfs_doc_id}[/dim]")
+                else:
+                    category_path = get_category_path(cfs_root, item.category)
+                    doc_path = item.cfs_doc_path
+                    stem = doc_path.stem
+                    if stem.startswith(f"{item.cfs_doc_id}-CLOSED-"):
+                        unclose_document(category_path, item.cfs_doc_id)
+                    else:
+                        uncomplete_document(category_path, item.cfs_doc_id)
+                    console.print(f"[green]Reopened {item.category}/{item.cfs_doc_id}[/green]")
+                    results["reopened_cfs"] += 1
 
             elif item.action == SyncAction.CONTENT_CONFLICT:
                 if not console.is_interactive:
