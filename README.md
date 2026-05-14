@@ -385,6 +385,62 @@ The generated file includes:
 - Testing guidelines
 - Development workflow
 
+### Managing Custom Categories
+
+In addition to the built-in categories (`bugs`, `features`, `research`, `refactors`, `docs`, `progress`, `qa`, `security`, `tmp`, `rules`), you can create your own categories — useful for project-specific buckets like `planning-notes`, `meetings`, or `experiments`.
+
+#### Creating a Custom Category
+
+```bash
+# Create a new category folder under .cursor/
+cfs instructions category create planning-notes
+# Or use the short form:
+cfs instr category create planning-notes
+
+# Create a category that is hidden from GitHub sync by default
+cfs instr category create work --hidden
+```
+
+**Naming rules:**
+- Lowercase letters and numbers only, with optional hyphens (e.g., `work`, `planning-notes`, `q1-goals`)
+- Cannot collide with a built-in category name
+
+Once created, the category gets the full set of document commands automatically:
+
+```bash
+cfs instr planning-notes create --title "Sprint planning"
+cfs instr planning-notes view
+cfs instr planning-notes complete 1
+```
+
+#### Listing Categories
+
+See every category (built-in and custom) along with its GitHub sync visibility:
+
+```bash
+cfs instructions category list
+# Or: cfs instr category list
+```
+
+#### Hiding / Unhiding from GitHub Sync
+
+```bash
+# Exclude a category from `cfs gh sync` by default
+cfs instr category hide work
+
+# Allow the category to sync again
+cfs instr category unhide work
+```
+
+**Example:**
+```bash
+$ cfs instr category create planning-notes
+✓ Created category: planning-notes
+
+$ cfs instr planning-notes create --title "Q2 roadmap"
+✓ Created document: .cursor/planning-notes/1-q2-roadmap.md
+```
+
 ## Command Reference
 
 ### Global Commands

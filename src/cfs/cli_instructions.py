@@ -28,7 +28,12 @@ from cfs.exceptions import (
 
 instructions_app = typer.Typer(
     name="instructions",
-    help="Manage Cursor instruction documents",
+    help=(
+        "Manage Cursor instruction documents (alias: `instr`, `i`). "
+        "Subcommands include built-in categories (bugs, features, research, ...) "
+        "and any custom categories you've added. "
+        "To add your own category, use `cfs instructions category create <name>`."
+    ),
 )
 handoff_app = typer.Typer(
     name="handoff",
@@ -38,7 +43,12 @@ handoff_app = typer.Typer(
 instructions_app.add_typer(handoff_app, name="handoff")
 category_admin_app = typer.Typer(
     name="category",
-    help="Manage custom instruction categories",
+    help=(
+        "Create and manage custom instruction categories. "
+        "Use `cfs instructions category create <name>` to add a new category folder "
+        "under .cursor/ (e.g. `planning-notes`, `experiments`). "
+        "See also: `list`, `hide`, `unhide`."
+    ),
 )
 instructions_app.add_typer(category_admin_app, name="category")
 
@@ -52,14 +62,32 @@ _REGISTERED_CATEGORY_COMMANDS: set[str] = set()
 
 @category_admin_app.command("create")
 def create_category_command(
-    name: str = typer.Argument(..., help="Custom category name (kebab-case)"),
+    name: str = typer.Argument(
+        ...,
+        help=(
+            "Custom category name in kebab-case "
+            "(lowercase letters/numbers with optional hyphens, e.g. `work`, `planning-notes`). "
+            "Cannot collide with a built-in category."
+        ),
+    ),
     hidden: bool = typer.Option(
         False,
         "--hidden",
         help="Hide this category from GitHub sync by default",
     ),
 ) -> None:
-    """Create a custom category directory under .cursor."""
+    """Create a new custom category folder under .cursor/.
+
+    Once created, the category immediately gets the standard document commands
+    (`create`, `edit`, `view`, `complete`, `close`, `delete`) under
+    `cfs instructions <name> ...`, so you can start adding documents right away.
+
+    Examples:
+
+        cfs instructions category create planning-notes
+
+        cfs instr category create work --hidden
+    """
     try:
         cfs_root = core.find_cfs_root()
     except CFSNotFoundError as e:
