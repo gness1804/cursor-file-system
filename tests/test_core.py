@@ -126,6 +126,7 @@ class TestValidateCategory:
             "bugs",
             "features",
             "refactors",
+            "ui",
             "docs",
             "progress",
             "qa",

@@ -15,6 +15,7 @@ BUILTIN_CATEGORIES = {
     "bugs",
     "features",
     "refactors",
+    "ui",
     "docs",
     "progress",
     "qa",
