@@ -349,6 +349,7 @@ $ cfs tree
     │   └── 1-handoff-phase-2.md
     ├── qa
     ├── security
+    ├── infrastructure-and-deployment
     ├── tmp
     ├── rules
     │   └── project-rules.mdc
@@ -388,7 +389,7 @@ The generated file includes:
 
 ### Managing Custom Categories
 
-In addition to the built-in categories (`bugs`, `features`, `research`, `refactors`, `ui`, `docs`, `progress`, `qa`, `security`, `tmp`, `rules`), you can create your own categories — useful for project-specific buckets like `planning-notes`, `meetings`, or `experiments`.
+In addition to the built-in categories (`bugs`, `features`, `research`, `refactors`, `ui`, `docs`, `progress`, `qa`, `security`, `infrastructure-and-deployment`, `tmp`, `rules`), you can create your own categories — useful for project-specific buckets like `planning-notes`, `meetings`, or `experiments`.
 
 #### Creating a Custom Category
 

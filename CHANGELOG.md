@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- New built-in `infrastructure-and-deployment` category for infrastructure and deployment-related task documents (peer of `bugs`, `features`, `refactors`, etc.)
 - New built-in `ui` category for UI/UX-related task documents (peer of `bugs`, `features`, `refactors`, etc.)
 
 ## [## [Unreleased]] - 2026-01-09
