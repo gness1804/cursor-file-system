@@ -125,6 +125,7 @@ This project uses CFS (Cursor File Structure) to manage instruction documents.{l
 - `.cursor/progress/` - Progress and handoff documents
 - `.cursor/qa/` - QA task documents
 - `.cursor/security/` - Security-related documents
+- `.cursor/infrastructure-and-deployment/` - Infrastructure and deployment task documents
 - `.cursor/tmp/` - Temporary documents
 
 ## Usage

@@ -131,6 +131,7 @@ class TestValidateCategory:
             "progress",
             "qa",
             "security",
+            "infrastructure-and-deployment",
             "tmp",
         }
         assert VALID_CATEGORIES == expected_categories

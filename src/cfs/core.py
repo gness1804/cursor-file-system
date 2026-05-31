@@ -20,6 +20,7 @@ BUILTIN_CATEGORIES = {
     "progress",
     "qa",
     "security",
+    "infrastructure-and-deployment",
     "tmp",
 }
 
