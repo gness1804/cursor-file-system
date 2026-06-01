@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New built-in `infrastructure-and-deployment` category for infrastructure and deployment-related task documents (peer of `bugs`, `features`, `refactors`, etc.)
 - New built-in `ui` category for UI/UX-related task documents (peer of `bugs`, `features`, `refactors`, etc.)
 
+## [0.10.1] - 2026-06-01
+
+### Fixed
+- Repaired the test suite (bugs/14): reconciled stale `test_documents.py` tests with intended behavior (structured skeleton on empty content; non-conforming `.md` files are listed) and replaced the removed `CliRunner.isolated_filesystem` with a version-independent helper, so `pytest` passes across Typer/Click versions.
+
 ## [## [Unreleased]] - 2026-01-09
 
 ### Added
