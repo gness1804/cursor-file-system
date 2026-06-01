@@ -13,4 +13,6 @@ We need a built-in category called `infrastructure-and-deployment.` This will be
 
 ## Acceptance criteria
 
-- A new built-in category will exist with the above name. 
+- A new built-in category will exist with the above name.
+
+<!-- DONE -->
