@@ -189,12 +189,15 @@ class TestCreateDocument:
         assert result.name == "1-fix-login-bug.md"
 
     def test_create_document_empty_content(self, tmp_path):
-        """Test creating document with empty content."""
+        """Empty content generates the structured skeleton (not an empty file)."""
         category_path = tmp_path / "bugs"
 
         result = create_document(category_path, "Test Document", "")
         assert result.exists()
-        assert result.read_text() == ""
+        content = result.read_text()
+        assert "# Test Document" in content
+        assert "## Working directory" in content
+        assert "## Contents" in content
 
     def test_create_document_increments_id(self, tmp_path):
         """Test that IDs increment correctly."""
@@ -346,7 +349,8 @@ class TestListDocuments:
         assert result["bugs"] == []
 
     def test_list_documents_ignores_non_md_files(self, tmp_path):
-        """Test that non-.md files are ignored."""
+        """Non-.md files are ignored; .md files without an ID prefix are
+        included but flagged with conforms_to_naming=False."""
         cursor_dir = tmp_path / ".cursor"
         cursor_dir.mkdir()
         bugs_dir = cursor_dir / "bugs"
@@ -357,8 +361,17 @@ class TestListDocuments:
         (bugs_dir / "README.md").write_text("content")  # No ID prefix
 
         result = list_documents(cursor_dir, category="bugs")
-        assert len(result["bugs"]) == 1
-        assert result["bugs"][0]["id"] == 1
+        # The .txt file is ignored; both .md files are included.
+        assert len(result["bugs"]) == 2
+        titles = {doc["title"] for doc in result["bugs"]}
+        assert titles == {"test", "README"}
+
+        conforming = next(doc for doc in result["bugs"] if doc["title"] == "test")
+        assert conforming["id"] == 1
+        assert conforming["conforms_to_naming"] is True
+
+        non_conforming = next(doc for doc in result["bugs"] if doc["title"] == "README")
+        assert non_conforming["conforms_to_naming"] is False
 
 
 class TestGetNextUnresolvedDocumentID:
