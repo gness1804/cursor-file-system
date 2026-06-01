@@ -1,3 +1,6 @@
+---
+github_issue: 56
+---
 # Test Suite Has 81 Failing Tests Pytest Broken
 
 ## Working directory
@@ -38,3 +41,5 @@ Test asserts `detect_editor() == "nano"`, but does not isolate the `EDITOR`/`VIS
 - The `test_cli.py` `isolated_filesystem` breakage is resolved (harness fix or dependency pin) and documented.
 - Stale `test_documents.py` and `test_editor.py` tests are reconciled with intended behavior (fix the test or the product code, whichever is correct).
 - A note on the supported Typer/Click version range is added if the fix involves pinning.
+
+<!-- DONE -->

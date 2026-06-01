@@ -1,6 +1,10 @@
 """Integration tests for CLI commands."""
 
 import json
+import os
+import shutil
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +12,29 @@ import pytest
 from typer.testing import CliRunner
 
 from cfs.cli import app
+
+
+@contextmanager
+def isolated_filesystem(temp_dir):
+    """Run a block inside a fresh, empty directory created under ``temp_dir``.
+
+    Drop-in replacement for ``CliRunner.isolated_filesystem(temp_dir)``, which
+    was removed in newer Typer/Click releases. It mirrors Click's behavior: a
+    new empty temp directory is created *inside* ``temp_dir`` (a pytest
+    ``tmp_path``), the cwd is switched to it, and the previous cwd is restored
+    on exit. Creating a fresh subdirectory — rather than chdir-ing into
+    ``temp_dir`` itself — keeps each test isolated from anything the fixture
+    placed in ``temp_dir``, and makes the suite independent of the installed
+    Typer/Click version.
+    """
+    previous_cwd = os.getcwd()
+    new_dir = tempfile.mkdtemp(dir=temp_dir)
+    os.chdir(new_dir)
+    try:
+        yield Path(new_dir)
+    finally:
+        os.chdir(previous_cwd)
+        shutil.rmtree(new_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -34,7 +61,7 @@ class TestInitCommand:
 
     def test_init_creates_structure(self, runner, tmp_path):
         """Test that init creates the CFS structure."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["init"])
 
             assert result.exit_code == 0
@@ -44,7 +71,7 @@ class TestInitCommand:
 
     def test_init_creates_init_md(self, runner, tmp_path):
         """Test that init creates init.md file."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["init"])
 
             assert result.exit_code == 0
@@ -56,7 +83,7 @@ class TestInitCommand:
         """Test init behavior when CFS already exists."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             # First init
             result1 = runner.invoke(app, ["init"])
             assert result1.exit_code == 0
@@ -69,7 +96,7 @@ class TestInitCommand:
         """Test init with --force flag."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             # First init
             runner.invoke(app, ["init"])
 
@@ -84,7 +111,7 @@ class TestCreateCommand:
     def test_create_document_success(self, runner, tmp_path):
         """Test successful document creation."""
         # Create CFS structure inside isolated filesystem
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure
@@ -104,7 +131,7 @@ class TestCreateCommand:
 
     def test_create_document_with_prompt(self, runner, tmp_path):
         """Test document creation with title prompt."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure
@@ -124,7 +151,7 @@ class TestCreateCommand:
 
     def test_create_document_invalid_category(self, runner, tmp_path):
         """Test that invalid category raises error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure
@@ -147,7 +174,7 @@ class TestCreateCommand:
 
     def test_create_document_no_cfs(self, runner, tmp_path):
         """Test that missing CFS structure raises error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "create", "--title", "Test"],
@@ -158,7 +185,7 @@ class TestCreateCommand:
 
     def test_create_document_with_content_flag(self, runner, tmp_path):
         """Test non-interactive document creation with --content flag."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -189,7 +216,7 @@ class TestCreateCommand:
 
     def test_create_document_with_content_flag_no_editor_prompt(self, runner, tmp_path):
         """Test that --content flag skips the editor prompt entirely."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -219,7 +246,7 @@ class TestCategoryCommand:
 
     def test_create_custom_category(self, runner, tmp_path):
         """Create a custom category directory."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
 
@@ -230,7 +257,7 @@ class TestCategoryCommand:
 
     def test_create_custom_category_hidden(self, runner, tmp_path):
         """Creating with --hidden persists hidden category config."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
 
@@ -247,7 +274,7 @@ class TestCategoryCommand:
 
     def test_use_custom_category_after_create(self, runner, tmp_path):
         """Custom category can be used with standard category commands."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
 
@@ -275,7 +302,7 @@ class TestEditCommand:
 
     def test_edit_document_success(self, runner, tmp_path):
         """Test successful document editing."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure and document
@@ -299,7 +326,7 @@ class TestEditCommand:
         """Test editing non-existent document."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "bugs", "edit", "999"])
 
             assert result.exit_code != 0
@@ -307,7 +334,7 @@ class TestEditCommand:
 
     def test_edit_document_with_content_flag(self, runner, tmp_path):
         """Test non-interactive document editing with --content flag."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -337,7 +364,7 @@ class TestEditCommand:
         """Test non-interactive edit of non-existent document."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "edit", "999", "--content", "New content"],
@@ -359,7 +386,7 @@ class TestDeleteCommand:
         bug_file.write_text("Content")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "delete", "1"],
@@ -376,7 +403,7 @@ class TestDeleteCommand:
         bug_file = cursor_dir / "bugs" / "1-test-bug.md"
         bug_file.write_text("Content")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "delete", "1"],
@@ -399,7 +426,7 @@ class TestCompleteCommand:
         bug_file.write_text("# Test Bug\n\nContent")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "complete", "1"],
@@ -421,7 +448,7 @@ class TestCompleteCommand:
         bug_file.write_text("# Test Bug\n\nContent")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "complete", "1", "--force"],
@@ -442,7 +469,7 @@ class TestCompleteCommand:
         bug_file.write_text("# Test Bug\n\nContent")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "complete", "1", "-y"],
@@ -462,7 +489,7 @@ class TestCompleteCommand:
         bug_file.write_text("# Test Bug\n\nContent")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "complete", "1"],
@@ -477,7 +504,7 @@ class TestCompleteCommand:
         """Test completing non-existent document."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "complete", "999", "--force"],
@@ -498,7 +525,7 @@ class TestUncompleteCommand:
         done_file.parent.mkdir(parents=True, exist_ok=True)
         done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "uncomplete", "1"],
@@ -518,7 +545,7 @@ class TestUncompleteCommand:
         done_file.parent.mkdir(parents=True, exist_ok=True)
         done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "uncomplete", "1", "--force"],
@@ -537,7 +564,7 @@ class TestUncompleteCommand:
         done_file.parent.mkdir(parents=True, exist_ok=True)
         done_file.write_text("# Test Bug\n\nContent\n\n<!-- DONE -->\n")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "uncomplete", "1"],
@@ -556,7 +583,7 @@ class TestUncompleteCommand:
         bug_file.parent.mkdir(parents=True, exist_ok=True)
         bug_file.write_text("# Test Bug\n\nContent")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "uncomplete", "1", "--force"],
@@ -568,7 +595,7 @@ class TestUncompleteCommand:
         """Test uncompleting a non-existent document."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "uncomplete", "999", "--force"],
@@ -589,7 +616,7 @@ class TestUncloseCommand:
         closed_file.parent.mkdir(parents=True, exist_ok=True)
         closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "unclose", "1"],
@@ -609,7 +636,7 @@ class TestUncloseCommand:
         closed_file.parent.mkdir(parents=True, exist_ok=True)
         closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "unclose", "1", "--force"],
@@ -628,7 +655,7 @@ class TestUncloseCommand:
         closed_file.parent.mkdir(parents=True, exist_ok=True)
         closed_file.write_text("# Test Bug\n\nContent\n\n<!-- CLOSED -->\n")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "unclose", "1"],
@@ -647,7 +674,7 @@ class TestUncloseCommand:
         bug_file.parent.mkdir(parents=True, exist_ok=True)
         bug_file.write_text("# Test Bug\n\nContent")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "unclose", "1", "--force"],
@@ -659,7 +686,7 @@ class TestUncloseCommand:
         """Test unclosing a non-existent document."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "unclose", "999", "--force"],
@@ -681,7 +708,7 @@ class TestCloseCommand:
         bug_file.write_text("# Test Bug\n\nContent")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "close", "1"],
@@ -703,7 +730,7 @@ class TestCloseCommand:
         bug_file.write_text("# Test Bug\n\nContent")
         assert bug_file.exists()
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "close", "1", "--force"],
@@ -719,7 +746,7 @@ class TestCloseCommand:
         """Test closing non-existent document."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "bugs", "close", "999", "--force"],
@@ -740,7 +767,7 @@ class TestViewCommand:
         (cursor_dir / "bugs" / "1-bug1.md").write_text("content")
         (cursor_dir / "features" / "1-feature1.md").write_text("content")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "view"])
 
             assert result.exit_code == 0
@@ -751,7 +778,7 @@ class TestViewCommand:
         """Test viewing empty CFS structure."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "view"])
 
             assert result.exit_code == 0
@@ -766,7 +793,7 @@ class TestViewCommand:
         (cursor_dir / "features" / "1-incomplete-feature.md").write_text("content")
         (cursor_dir / "features" / "2-CLOSED-closed-feature.md").write_text("content")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["view"])
 
             assert result.exit_code == 0
@@ -787,7 +814,7 @@ class TestRulesCreateCommand:
         """Test successful rules document creation."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["rules", "create", "--name", "test-rules"],
@@ -799,7 +826,7 @@ class TestRulesCreateCommand:
 
     def test_rules_create_with_prompt(self, runner, tmp_path):
         """Test rules creation with name prompt."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure
@@ -829,7 +856,7 @@ class TestNextCommand:
         bug_file = cursor_dir / "bugs" / "1-test-bug.md"
         bug_file.write_text("# Test Bug\n\nContent here.")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "next", "bugs"],
@@ -848,7 +875,7 @@ class TestNextCommand:
         (cursor_dir / "bugs" / "1-DONE-completed.md").write_text("content")
         (cursor_dir / "bugs" / "2-DONE-another.md").write_text("content")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "next", "bugs"])
 
             assert result.exit_code != 0
@@ -858,14 +885,14 @@ class TestNextCommand:
         """Test with invalid category."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "next", "invalid"])
 
             assert result.exit_code != 0
 
     def test_next_document_no_cfs(self, runner, tmp_path):
         """Test that missing CFS structure raises error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "next", "bugs"])
 
             assert result.exit_code != 0
@@ -879,7 +906,7 @@ class TestHandoffCommand:
         """Test successfully generating handoff instructions."""
         tmp_path, cursor_dir = temp_cfs
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "handoff"])
 
             assert result.exit_code == 0
@@ -888,7 +915,7 @@ class TestHandoffCommand:
 
     def test_handoff_create_no_cfs(self, runner, tmp_path):
         """Test that missing CFS structure raises error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "handoff"])
 
             assert result.exit_code != 0
@@ -911,7 +938,7 @@ class TestHandoffPickupCommand:
         handoff_file = progress_dir / "1-handoff-test.md"
         handoff_file.write_text("# Handoff Test\n\nContent here.")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(
                 app,
                 ["instructions", "handoff", "pickup"],
@@ -934,7 +961,7 @@ class TestHandoffPickupCommand:
         (progress_dir / "1-DONE-handoff-completed.md").write_text("content")
         (progress_dir / "2-DONE-another-handoff.md").write_text("content")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "handoff", "pickup"])
 
             assert result.exit_code != 0
@@ -946,7 +973,7 @@ class TestHandoffPickupCommand:
 
         # Don't create progress category
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "handoff", "pickup"])
 
             # Should either create the category or show an error
@@ -955,7 +982,7 @@ class TestHandoffPickupCommand:
 
     def test_handoff_pickup_no_cfs(self, runner, tmp_path):
         """Test that missing CFS structure raises error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["instructions", "handoff", "pickup"])
 
             assert result.exit_code != 0
@@ -975,7 +1002,7 @@ class TestTreeCommand:
         (cursor_dir / "rules" / "test-rules.mdc").write_text("content")
         # Leave some directories empty to test empty folder display
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["tree"])
 
             assert result.exit_code == 0
@@ -994,7 +1021,7 @@ class TestTreeCommand:
         (cursor_dir / "research").mkdir(exist_ok=True)
         (cursor_dir / "qa").mkdir(exist_ok=True)
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["tree"])
 
             assert result.exit_code == 0
@@ -1011,7 +1038,7 @@ class TestTreeCommand:
         (cursor_dir / "bugs" / "2-second.md").write_text("content")
         (cursor_dir / "init.md").write_text("content")
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["tree"])
 
             assert result.exit_code == 0
@@ -1021,7 +1048,7 @@ class TestTreeCommand:
 
     def test_tree_no_cfs(self, runner, tmp_path):
         """Test that missing CFS structure raises error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             result = runner.invoke(app, ["tree"])
 
             assert result.exit_code != 0
@@ -1057,7 +1084,7 @@ class TestExecCommand:
 
     def test_exec_outputs_content(self, runner, tmp_path):
         """Test that exec outputs document content."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure with a document
@@ -1077,7 +1104,7 @@ class TestExecCommand:
 
     def test_exec_with_confirmation_declined(self, runner, tmp_path):
         """Test that exec aborts when confirmation is declined."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure with a document
@@ -1095,7 +1122,7 @@ class TestExecCommand:
 
     def test_exec_document_not_found(self, runner, tmp_path):
         """Test exec with non-existent document ID."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure without any documents
@@ -1109,7 +1136,7 @@ class TestExecCommand:
 
     def test_exec_invalid_category(self, runner, tmp_path):
         """Test exec with invalid category."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1121,7 +1148,7 @@ class TestExecCommand:
 
     def test_exec_claude_flag_confirmation_message(self, runner, tmp_path):
         """Test that --claude flag shows appropriate confirmation message."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure with a document
@@ -1141,7 +1168,7 @@ class TestExecCommand:
         """Test exec --claude when Claude Code is not installed."""
         mock_which.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure with a document
@@ -1164,7 +1191,7 @@ class TestExecCommand:
         mock_which.return_value = "/usr/local/bin/claude"
         mock_run.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure with a document
@@ -1197,7 +1224,7 @@ class TestExecCommand:
         mock_which.return_value = "/usr/local/bin/claude"
         mock_run.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1220,7 +1247,7 @@ class TestExecCommand:
 
     def test_exec_mutual_exclusivity_error(self, runner, tmp_path):
         """Test that using multiple AI flags raises an error."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             # Create CFS structure with a document
@@ -1240,7 +1267,7 @@ class TestExecCommand:
 
     def test_exec_gemini_flag_confirmation_message(self, runner, tmp_path):
         """Test that --gemini flag shows appropriate confirmation message."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1256,7 +1283,7 @@ class TestExecCommand:
 
     def test_exec_cursor_flag_confirmation_message(self, runner, tmp_path):
         """Test that --cursor flag shows appropriate confirmation message."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1272,7 +1299,7 @@ class TestExecCommand:
 
     def test_exec_codex_flag_confirmation_message(self, runner, tmp_path):
         """Test that --codex flag shows appropriate confirmation message."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1291,7 +1318,7 @@ class TestExecCommand:
         """Test exec --gemini when Gemini CLI is not installed."""
         mock_which.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1311,7 +1338,7 @@ class TestExecCommand:
         """Test exec --cursor when Cursor Agent CLI is not installed."""
         mock_which.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1331,7 +1358,7 @@ class TestExecCommand:
         """Test exec --codex when OpenAI Codex CLI is not installed."""
         mock_which.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1353,7 +1380,7 @@ class TestExecCommand:
         mock_which.return_value = "/usr/local/bin/gemini"
         mock_run.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1382,7 +1409,7 @@ class TestExecCommand:
         mock_which.return_value = "/usr/local/bin/agent"
         mock_run.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1412,7 +1439,7 @@ class TestExecCommand:
         mock_which.return_value = "/usr/local/bin/codex"
         mock_run.return_value = None
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             from pathlib import Path
 
             cursor_dir = Path.cwd() / ".cursor"
@@ -1669,7 +1696,7 @@ class TestCreateCommandWithGithubAutoSync:
 
     def test_create_skips_github_when_gh_not_installed(self, runner, tmp_path):
         """Create command should succeed even when gh is not installed."""
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
             (cursor_dir / "bugs").mkdir()
@@ -1706,7 +1733,7 @@ class TestCreateCommandWithGithubAutoSync:
             url="https://github.com/owner/repo/issues/55",
         )
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
             (cursor_dir / "bugs").mkdir()
@@ -1747,7 +1774,7 @@ class TestCreateCommandWithGithubAutoSync:
             url="https://github.com/owner/repo/issues/42",
         )
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
             bugs_dir = cursor_dir / "bugs"
@@ -1785,7 +1812,7 @@ class TestCreateCommandWithGithubAutoSync:
             url="https://github.com/owner/repo/issues/77",
         )
 
-        with runner.isolated_filesystem(tmp_path):
+        with isolated_filesystem(tmp_path):
             cursor_dir = Path.cwd() / ".cursor"
             cursor_dir.mkdir()
             features_dir = cursor_dir / "features"
