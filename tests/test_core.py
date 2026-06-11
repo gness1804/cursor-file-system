@@ -149,3 +149,52 @@ class TestCustomCategoryConfig:
         assert category_path.exists()
         assert "work" in get_all_categories(cursor_dir)
         assert "work" in get_hidden_categories(cursor_dir)
+
+
+class TestCategoryDiscoveryGuards:
+    """Discovery of categories from disk applies the same guards as creation.
+
+    Without these guards, a crafted directory in an untrusted repo (e.g. a
+    cloned project shipping `.cursor/gh/`) would be registered as a top-level
+    command group and shadow the real command.
+    """
+
+    def _make_cursor(self, tmp_path):
+        cursor_dir = tmp_path / ".cursor"
+        cursor_dir.mkdir()
+        return cursor_dir
+
+    def test_reserved_name_dirs_are_not_discovered(self, tmp_path):
+        from cfs.core import RESERVED_CATEGORY_NAMES, get_custom_categories
+
+        cursor_dir = self._make_cursor(tmp_path)
+        for name in ["gh", "init", "version", "tree", "i", "handoff"]:
+            (cursor_dir / name).mkdir()
+        (cursor_dir / "legit-notes").mkdir()
+
+        discovered = get_custom_categories(cursor_dir)
+
+        assert discovered == {"legit-notes"}
+        assert not discovered & RESERVED_CATEGORY_NAMES
+
+    def test_invalid_name_dirs_are_not_discovered(self, tmp_path):
+        from cfs.core import get_custom_categories
+
+        cursor_dir = self._make_cursor(tmp_path)
+        for name in ["UPPER", "has_underscore", "trailing-", "with space"]:
+            (cursor_dir / name).mkdir()
+        (cursor_dir / "valid-name").mkdir()
+
+        assert get_custom_categories(cursor_dir) == {"valid-name"}
+
+    def test_command_registration_excludes_reserved_dirs(self, tmp_path):
+        from cfs.core import categories_for_command_registration
+
+        cursor_dir = self._make_cursor(tmp_path)
+        (cursor_dir / "gh").mkdir()
+        (cursor_dir / "legit-notes").mkdir()
+
+        registered = categories_for_command_registration(start_path=tmp_path)
+
+        assert "gh" not in registered
+        assert "legit-notes" in registered

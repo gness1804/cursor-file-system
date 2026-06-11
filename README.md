@@ -454,13 +454,13 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 
 ### Instructions Commands
 
-**Note:** You can use either `instructions` or the shorter `instr` alias for all commands below.
+**Note:** The `instructions` prefix is optional. `cfs bugs complete 7`, `cfs i bugs complete 7`, `cfs instr bugs complete 7`, and `cfs instructions bugs complete 7` are all equivalent; the prefixed forms are permanent aliases. Examples below use the `cfs instructions` form for clarity.
 
 - `cfs instructions <category> create [--title TITLE] [--edit] [--content TEXT]` - Create new document
 - `cfs instructions <category> edit <id> [--content TEXT]` - Edit existing document
 - `cfs instructions <category> delete <id> [--force]` - Delete document
 - `cfs instructions <category> view [id]` - View documents in category (or one document by ID)
-- `cfs instructions view` - View all documents across all categories
+- `cfs instructions view [--all/-a]` - View incomplete documents across all categories (`--all` includes completed); same as top-level `cfs view`
 - `cfs instructions <category> complete <id> [--force/-y]` - Mark document as done (requires confirmation)
 - `cfs instructions <category> order` - Order documents by naming convention
 - `cfs instructions <category> next` - Find and work on the next unresolved issue
@@ -473,12 +473,13 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 - `cfs instructions handoff create` - Generate instructions for creating a handoff document (or bare `cfs instructions handoff`)
 - `cfs instructions handoff pickup` - Pick up the first incomplete handoff document
 
-**Command grammar:** every category-scoped command follows the same order: `cfs instructions <category> <verb> [id] [flags]`. The old verb-first forms (`cfs i order <category>`, `cfs i next <category>`, `cfs i move <src> <id> <dest>`, `cfs i view <category>`, `cfs i handoff create-handoff`) still work but are deprecated, print a warning, and will be removed in a future version.
+**Command grammar:** every category-scoped command follows the same order: `cfs [instructions] <category> <verb> [id] [flags]` — the `instructions`/`instr`/`i` prefix is optional. The old verb-first forms (`cfs i order <category>`, `cfs i next <category>`, `cfs i move <src> <id> <dest>`, `cfs i view <category>`, `cfs i handoff create-handoff`) still work but are deprecated, print a warning, and will be removed in a future version.
 
-**Examples with short alias:**
-- `cfs instr view` - View all documents
-- `cfs instr bugs create --title "Fix bug"` - Create a bug document
-- `cfs instr features next` - Work on next feature
+**Examples with short forms:**
+- `cfs view` - View incomplete documents
+- `cfs bugs create --title "Fix bug"` - Create a bug document
+- `cfs features next` - Work on next feature
+- `cfs i bugs complete 3 --force` - The `i` alias works everywhere the bare form does
 
 ### Rules Commands
 

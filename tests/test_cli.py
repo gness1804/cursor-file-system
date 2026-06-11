@@ -2047,3 +2047,148 @@ class TestConsistentCommandGrammar:
 
                 assert result.exit_code != 0, f"'{reserved}' should be rejected"
                 assert "reserved" in result.stdout
+
+
+class TestTopLevelCategoryCommands:
+    """Tests for top-level category grammar (issue #59): `cfs <category> <verb> [id]`.
+
+    The `instructions`/`instr`/`i` forms remain permanent, equivalent aliases.
+    """
+
+    def test_top_level_create_and_view(self, runner, temp_cfs):
+        """`cfs bugs create` and `cfs bugs view` work without the `i` prefix."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["bugs", "create", "--title", "Top level bug", "--content", "Body."],
+            )
+
+            assert result.exit_code == 0
+            assert (cursor_dir / "bugs" / "1-top-level-bug.md").exists()
+
+            result = runner.invoke(app, ["bugs", "view"])
+            assert result.exit_code == 0
+            assert "top-level-bug" in result.stdout
+
+    def test_top_level_equivalent_to_i_form(self, runner, temp_cfs):
+        """Top-level and `i`-prefixed forms run the same command."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n\nContent.")
+
+        with isolated_filesystem(tmp_path):
+            top = runner.invoke(app, ["bugs", "next"], input="n\n")
+            aliased = runner.invoke(app, ["i", "bugs", "next"], input="n\n")
+
+            assert "Next issue in bugs" in top.stdout
+            assert "Next issue in bugs" in aliased.stdout
+            assert "deprecated" not in top.stdout
+            assert "deprecated" not in aliased.stdout
+
+    def test_top_level_complete(self, runner, temp_cfs):
+        """`cfs bugs complete <id>` works at the top level."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["bugs", "complete", "1", "--force"])
+
+            assert result.exit_code == 0
+            assert (cursor_dir / "bugs" / "1-DONE-test-bug.md").exists()
+
+    def test_top_level_handoff_and_category_groups(self, runner, temp_cfs):
+        """`cfs handoff` and `cfs category list` work at the top level."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["handoff", "create"])
+            assert result.exit_code == 0
+            assert "Handoff Instructions" in result.stdout
+
+            result = runner.invoke(app, ["category", "list"])
+            assert result.exit_code == 0
+            assert "bugs" in result.stdout
+
+    def test_runtime_custom_category_works_at_top_level(self, runner, temp_cfs):
+        """A custom category created at runtime is immediately usable at the top level."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["category", "create", "toplevel-notes"])
+            assert result.exit_code == 0
+
+            result = runner.invoke(
+                app,
+                ["toplevel-notes", "create", "--title", "A note", "--content", "Body."],
+            )
+            assert result.exit_code == 0
+            assert (cursor_dir / "toplevel-notes" / "1-a-note.md").exists()
+
+            # The same runtime-created category must also work via the `i` alias
+            # (proves the multi-target backfill registers on both apps).
+            result = runner.invoke(app, ["i", "toplevel-notes", "view"])
+            assert result.exit_code == 0
+            assert "a-note" in result.stdout
+
+    def test_top_level_names_are_reserved(self, runner, temp_cfs):
+        """Custom categories cannot shadow top-level commands or groups."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            for reserved in ["init", "version", "tree", "gh", "instructions", "instr", "i"]:
+                result = runner.invoke(app, ["category", "create", reserved])
+
+                assert result.exit_code != 0, f"'{reserved}' should be rejected"
+                assert "reserved" in result.stdout
+
+
+class TestUnifiedViewSemantics:
+    """`cfs view` and `cfs i view` both default to incomplete-only; --all shows everything."""
+
+    def _make_docs(self, cursor_dir):
+        (cursor_dir / "bugs" / "1-DONE-finished-bug.md").write_text("# Finished\n")
+        (cursor_dir / "bugs" / "2-open-bug.md").write_text("# Open\n")
+
+    def test_top_level_view_defaults_to_incomplete(self, runner, temp_cfs):
+        tmp_path, cursor_dir = temp_cfs
+        self._make_docs(cursor_dir)
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["view"])
+
+            assert result.exit_code == 0
+            assert "open-bug" in result.stdout
+            assert "finished-bug" not in result.stdout
+
+    def test_top_level_view_all_includes_completed(self, runner, temp_cfs):
+        tmp_path, cursor_dir = temp_cfs
+        self._make_docs(cursor_dir)
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["view", "--all"])
+
+            assert result.exit_code == 0
+            assert "open-bug" in result.stdout
+            assert "finished-bug" in result.stdout
+
+    def test_i_view_matches_top_level_default(self, runner, temp_cfs):
+        tmp_path, cursor_dir = temp_cfs
+        self._make_docs(cursor_dir)
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["i", "view"])
+
+            assert result.exit_code == 0
+            assert "open-bug" in result.stdout
+            assert "finished-bug" not in result.stdout
+
+    def test_i_view_all_includes_completed(self, runner, temp_cfs):
+        tmp_path, cursor_dir = temp_cfs
+        self._make_docs(cursor_dir)
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["i", "view", "--all"])
+
+            assert result.exit_code == 0
+            assert "finished-bug" in result.stdout
