@@ -53,6 +53,14 @@ category_admin_app = typer.Typer(
 instructions_app.add_typer(category_admin_app, name="category")
 
 
+def _warn_deprecated(old_form: str, new_form: str) -> None:
+    """Print a deprecation warning pointing at the canonical command form."""
+    console.print(
+        f"[yellow]⚠️  `{old_form}` is deprecated and will be removed in a future version. "
+        f"Use `{new_form}` instead.[/yellow]"
+    )
+
+
 # =============================================================================
 # Dynamic Category Commands
 # =============================================================================
@@ -1013,6 +1021,111 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                     for issue in issues:
                         console.print(f"  [yellow]- {issue}[/yellow]")
 
+            @category_app.command("next")
+            def next_in_category(
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-y",
+                    "--yes",
+                    help="Skip confirmation and work on issue immediately",
+                ),
+            ) -> None:
+                """Find and work on the next unresolved issue in this category.
+
+                Shows the title of the first document not marked as DONE and asks
+                if you want to work on it. If yes, displays the full content and
+                copies it to the clipboard.
+                """
+                _next_document_impl(cat, force)
+
+            @category_app.command("order")
+            def order_in_category(
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-y",
+                    "--yes",
+                    help="Skip confirmation and rename immediately",
+                ),
+            ) -> None:
+                """Order documents in this category by renaming them to follow CFS naming convention."""
+                _order_documents_impl(cat, force)
+
+            @category_app.command("move")
+            def move_in_category(
+                doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+                dest_category: str = typer.Argument(..., help="Destination category name"),
+                no_renumber: bool = typer.Option(
+                    False,
+                    "--no-renumber",
+                    help="Skip renumbering documents in this category after move",
+                ),
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-y",
+                    "--yes",
+                    help="Skip confirmation prompt",
+                ),
+            ) -> None:
+                """Move a document from this category to another.
+
+                The document receives a new sequential ID in the destination
+                category. By default, remaining documents in this category are
+                renumbered to fill the gap.
+                """
+                _move_document_impl(cat, doc_id, dest_category, no_renumber, force)
+
+            @category_app.command("exec")
+            def exec_in_category(
+                doc_id: Optional[str] = typer.Argument(
+                    None,
+                    help="Document ID (numeric or 'next')",
+                ),
+                force: bool = typer.Option(
+                    False,
+                    "--force",
+                    "-f",
+                    help="Skip confirmation prompt",
+                ),
+                next_flag: bool = typer.Option(
+                    False,
+                    "--next",
+                    help="Execute the next (first) document in this category",
+                ),
+                claude: bool = typer.Option(
+                    False,
+                    "--claude",
+                    "-c",
+                    help="Start a Claude Code session with this document",
+                ),
+                gemini: bool = typer.Option(
+                    False,
+                    "--gemini",
+                    "-g",
+                    help="Start a Gemini CLI session with this document",
+                ),
+                cursor: bool = typer.Option(
+                    False,
+                    "--cursor",
+                    "-u",
+                    help="Start a Cursor Agent CLI session with this document",
+                ),
+                codex: bool = typer.Option(
+                    False,
+                    "--codex",
+                    "-x",
+                    help="Start an OpenAI Codex CLI session with this document",
+                ),
+            ) -> None:
+                """Execute instructions from a document in this category.
+
+                Outputs the document content as custom instructions text, or
+                starts an AI session with it via the service flags.
+                """
+                exec_document_impl(cat, doc_id, force, next_flag, claude, gemini, cursor, codex)
+
         # Create all commands for this category
         make_category_commands(category)
 
@@ -1194,6 +1307,167 @@ def _launch_codex(content: str, category: str, doc_id: int) -> None:
         console.print("\n[yellow]OpenAI Codex CLI session interrupted[/yellow]")
 
 
+def exec_document_impl(
+    category: str,
+    doc_id: Optional[str],
+    force: bool,
+    next_flag: bool,
+    claude: bool,
+    gemini: bool,
+    cursor: bool,
+    codex: bool,
+) -> None:
+    """Execute instructions from a document by outputting them as custom instructions text.
+
+    Shared implementation behind `cfs exec <category> <id>` and
+    `cfs i <category> exec <id>`.
+    """
+    from cfs.documents import (
+        find_document_by_id,
+        get_document_title,
+        get_next_document_id,
+        parse_document_id_from_string,
+    )
+
+    # Check for mutual exclusivity of AI service flags
+    ai_flags = [
+        ("--claude", claude),
+        ("--gemini", gemini),
+        ("--cursor", cursor),
+        ("--codex", codex),
+    ]
+    selected_flags = [name for name, value in ai_flags if value]
+    if len(selected_flags) > 1:
+        console.print(
+            f"[red]Error: Only one AI service flag can be used at a time. "
+            f"You specified: {', '.join(selected_flags)}[/red]"
+        )
+        raise typer.Abort()
+
+    try:
+        # Find CFS root
+        cfs_root = core.find_cfs_root()
+    except CFSNotFoundError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Validate category
+    try:
+        category_path = core.get_category_path(cfs_root, category)
+    except InvalidCategoryError as e:
+        handle_cfs_error(e)
+        raise typer.Abort()
+
+    # Determine which document to execute
+    target_doc_id: Optional[int] = None
+
+    if next_flag or (doc_id and doc_id.lower() == "next"):
+        # Get next document
+        target_doc_id = get_next_document_id(category_path)
+        if target_doc_id is None:
+            console.print(
+                f"[yellow]No documents found in {category} category[/yellow]",
+            )
+            raise typer.Abort()
+    elif doc_id:
+        # Parse provided document ID
+        try:
+            target_doc_id = parse_document_id_from_string(doc_id)
+        except InvalidDocumentIDError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+    else:
+        # No doc_id provided and --next not used - prompt user
+        console.print(
+            "[yellow]No document ID provided. Use a number, 'next', or --next flag[/yellow]"
+        )
+        raise typer.Abort()
+
+    # Find document
+    doc_path = find_document_by_id(category_path, target_doc_id)
+    if doc_path is None or not doc_path.exists():
+        try:
+            raise DocumentNotFoundError(target_doc_id, category)
+        except DocumentNotFoundError as e:
+            handle_cfs_error(e)
+            raise typer.Abort()
+
+    # Get document title and content
+    try:
+        title = get_document_title(doc_path)
+        content = doc_path.read_text(encoding="utf-8")
+    except (OSError, IOError) as e:
+        console.print(f"[red]Error reading document: {e}[/red]")
+        raise typer.Abort()
+
+    # Determine which AI service is selected (if any)
+    ai_service = None
+    if claude:
+        ai_service = "Claude Code"
+    elif gemini:
+        ai_service = "Gemini CLI"
+    elif cursor:
+        ai_service = "Cursor Agent CLI"
+    elif codex:
+        ai_service = "OpenAI Codex CLI"
+
+    # Show confirmation (unless --force)
+    if not force:
+        console.print(f"\n[bold]Document:[/bold] {title}")
+        console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
+        console.print()
+        if ai_service:
+            confirm_msg = f"Start a {ai_service} session with this document?"
+        else:
+            confirm_msg = "Execute this document? (This will output the instructions text)"
+        if not typer.confirm(confirm_msg, default=False):
+            console.print("[yellow]Execution cancelled[/yellow]")
+            raise typer.Abort()
+
+    if claude:
+        # Launch Claude Code with the document content
+        _launch_claude_code(content, category, target_doc_id)
+    elif gemini:
+        # Launch Gemini CLI with the document content
+        _launch_gemini(content, category, target_doc_id)
+    elif cursor:
+        # Launch Cursor Agent CLI with the document content
+        _launch_cursor_agent(content, category, target_doc_id)
+    elif codex:
+        # Launch OpenAI Codex CLI with the document content
+        _launch_codex(content, category, target_doc_id)
+    else:
+        # Output the document content as custom instructions
+        console.print()
+        console.print("[bold cyan]--- Custom Instructions ---[/bold cyan]")
+        console.print()
+        console.print(content)
+        console.print()
+        console.print("[bold cyan]--- End Custom Instructions ---[/bold cyan]")
+        console.print()
+
+        # Copy to clipboard
+        try:
+            import pyperclip
+
+            pyperclip.copy(content)
+            console.print("[green]✓ Instructions copied to clipboard[/green]")
+        except ImportError:
+            console.print(
+                "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
+            )
+            console.print(
+                "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+            )
+        except Exception as e:
+            console.print(
+                f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
+            )
+            console.print(
+                "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
+            )
+
+
 # =============================================================================
 # Top-Level Instructions Commands
 # =============================================================================
@@ -1212,11 +1486,17 @@ def view_all(
         help="Show only incomplete issues",
     ),
 ) -> None:
-    """View all documents across all categories or a specific category."""
+    """View all documents across all categories.
+
+    Passing a category argument is deprecated; use `cfs i <category> view` instead.
+    """
     from datetime import datetime
 
     from cfs import documents
     from cfs.documents import is_document_incomplete
+
+    if category:
+        _warn_deprecated(f"cfs i view {category}", f"cfs i {category} view")
 
     try:
         # Find CFS root
@@ -1341,26 +1621,12 @@ def view_all(
             console.print(table)
 
 
-@instructions_app.command("next")
-def next_document(
-    category: str = typer.Argument(..., help="Category name"),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-y",
-        "--yes",
-        help="Skip confirmation and work on issue immediately",
-    ),
-) -> None:
+def _next_document_impl(category: str, force: bool) -> None:
     """Find and work on the next unresolved issue in a category.
 
-    This command finds the first unresolved document (not marked as DONE) in the
-    specified category, shows its title, and asks if you want to work on it.
-    If yes, it displays the full content and copies it to the clipboard.
-
-    Examples:
-        cfs instructions next bugs    # Work on the next bug
-        cfs instructions next features  # Work on the next feature
+    Finds the first unresolved document (not marked as DONE) in the specified
+    category, shows its title, and asks if you want to work on it. If yes, it
+    displays the full content and copies it to the clipboard.
     """
     from cfs.documents import (
         find_document_by_id,
@@ -1456,16 +1722,23 @@ def next_document(
         )
 
 
-@instructions_app.command("order")
-def order_documents_command(
+@instructions_app.command("next", hidden=True)
+def next_document(
     category: str = typer.Argument(..., help="Category name"),
     force: bool = typer.Option(
         False,
         "--force",
+        "-y",
         "--yes",
-        help="Skip confirmation and rename immediately",
+        help="Skip confirmation and work on issue immediately",
     ),
 ) -> None:
+    """[Deprecated] Use `cfs i <category> next` instead."""
+    _warn_deprecated(f"cfs i next {category}", f"cfs i {category} next")
+    _next_document_impl(category, force)
+
+
+def _order_documents_impl(category: str, force: bool) -> None:
     """Order documents in a category by renaming them to follow CFS naming convention."""
     from cfs import documents
 
@@ -1535,30 +1808,33 @@ def order_documents_command(
         raise typer.Abort()
 
 
-@instructions_app.command("move")
-def move_document_command(
-    source_category: str = typer.Argument(..., help="Source category name"),
-    doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
-    dest_category: str = typer.Argument(..., help="Destination category name"),
-    no_renumber: bool = typer.Option(
-        False,
-        "--no-renumber",
-        help="Skip renumbering documents in the source category after move",
-    ),
+@instructions_app.command("order", hidden=True)
+def order_documents_command(
+    category: str = typer.Argument(..., help="Category name"),
     force: bool = typer.Option(
         False,
         "--force",
         "-y",
         "--yes",
-        help="Skip confirmation prompt",
+        help="Skip confirmation and rename immediately",
     ),
+) -> None:
+    """[Deprecated] Use `cfs i <category> order` instead."""
+    _warn_deprecated(f"cfs i order {category}", f"cfs i {category} order")
+    _order_documents_impl(category, force)
+
+
+def _move_document_impl(
+    source_category: str,
+    doc_id: str,
+    dest_category: str,
+    no_renumber: bool,
+    force: bool,
 ) -> None:
     """Move a document from one category to another.
 
     The document receives a new sequential ID in the destination category.
     By default, documents in the source category are renumbered to fill the gap.
-
-    Example: cfs i move features 1 security
     """
     from cfs.documents import (
         find_document_by_id,
@@ -1645,6 +1921,32 @@ def move_document_command(
         raise typer.Abort()
 
 
+@instructions_app.command("move", hidden=True)
+def move_document_command(
+    source_category: str = typer.Argument(..., help="Source category name"),
+    doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
+    dest_category: str = typer.Argument(..., help="Destination category name"),
+    no_renumber: bool = typer.Option(
+        False,
+        "--no-renumber",
+        help="Skip renumbering documents in the source category after move",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-y",
+        "--yes",
+        help="Skip confirmation prompt",
+    ),
+) -> None:
+    """[Deprecated] Use `cfs i <category> move <id> <dest-category>` instead."""
+    _warn_deprecated(
+        f"cfs i move {source_category} {doc_id} {dest_category}",
+        f"cfs i {source_category} move {doc_id} {dest_category}",
+    )
+    _move_document_impl(source_category, doc_id, dest_category, no_renumber, force)
+
+
 # =============================================================================
 # Handoff Commands
 # =============================================================================
@@ -1657,7 +1959,7 @@ def handoff_callback(ctx: typer.Context) -> None:
         create_handoff()
 
 
-@handoff_app.command("create-handoff")
+@handoff_app.command("create")
 def create_handoff() -> None:
     """Generate instructions for creating a handoff document.
 
@@ -1773,6 +2075,13 @@ cfs instructions handoff pickup
         console.print(
             "[dim]Copy the instructions above and paste them into your Cursor agent.[/dim]",
         )
+
+
+@handoff_app.command("create-handoff", hidden=True)
+def create_handoff_deprecated() -> None:
+    """[Deprecated] Use `cfs i handoff create` instead."""
+    _warn_deprecated("cfs i handoff create-handoff", "cfs i handoff create")
+    create_handoff()
 
 
 @handoff_app.command("pickup")

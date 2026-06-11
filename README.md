@@ -222,13 +222,13 @@ The `next` command automatically finds and works on the first unresolved issue i
 
 ```bash
 # Find and work on the next unresolved bug
-cfs instructions next bugs
+cfs instructions bugs next
 # Or use the short form:
-cfs instr next bugs
+cfs instr bugs next
 
 # Find and work on the next unresolved feature
-cfs instructions next features
-# Or: cfs instr next features
+cfs instructions features next
+# Or: cfs instr features next
 ```
 
 **How it works:**
@@ -239,7 +239,7 @@ cfs instructions next features
 
 **Example:**
 ```bash
-$ cfs instructions next bugs
+$ cfs instructions bugs next
 
 Next issue in bugs: Fix login bug
 Category: bugs, ID: 1
@@ -459,22 +459,26 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 - `cfs instructions <category> create [--title TITLE] [--edit] [--content TEXT]` - Create new document
 - `cfs instructions <category> edit <id> [--content TEXT]` - Edit existing document
 - `cfs instructions <category> delete <id> [--force]` - Delete document
-- `cfs instructions <category> view` - View documents in category
-- `cfs instructions view [category]` - View all documents or filter by category
+- `cfs instructions <category> view [id]` - View documents in category (or one document by ID)
+- `cfs instructions view` - View all documents across all categories
 - `cfs instructions <category> complete <id> [--force/-y]` - Mark document as done (requires confirmation)
 - `cfs instructions <category> order` - Order documents by naming convention
-- `cfs instructions next <category>` - Find and work on the next unresolved issue
+- `cfs instructions <category> next` - Find and work on the next unresolved issue
+- `cfs instructions <category> move <id> <dest-category>` - Move a document to another category
+- `cfs instructions <category> exec <id>` - Output a document as custom instructions (also: `cfs exec <category> <id>`)
 - `cfs instructions category create <name> [--hidden]` - Create a custom category folder
 - `cfs instructions category hide <name>` - Hide a category from GitHub sync by default
 - `cfs instructions category unhide <name>` - Unhide a category for GitHub sync by default
 - `cfs instructions category list` - List built-in/custom categories and sync visibility
-- `cfs instructions handoff` - Generate instructions for creating a handoff document
+- `cfs instructions handoff create` - Generate instructions for creating a handoff document (or bare `cfs instructions handoff`)
 - `cfs instructions handoff pickup` - Pick up the first incomplete handoff document
+
+**Command grammar:** every category-scoped command follows the same order: `cfs instructions <category> <verb> [id] [flags]`. The old verb-first forms (`cfs i order <category>`, `cfs i next <category>`, `cfs i move <src> <id> <dest>`, `cfs i view <category>`, `cfs i handoff create-handoff`) still work but are deprecated, print a warning, and will be removed in a future version.
 
 **Examples with short alias:**
 - `cfs instr view` - View all documents
 - `cfs instr bugs create --title "Fix bug"` - Create a bug document
-- `cfs instr next features` - Work on next feature
+- `cfs instr features next` - Work on next feature
 
 ### Rules Commands
 
@@ -620,7 +624,7 @@ cfs instructions features complete 1 --force
 
 ```bash
 # Work on the next unresolved bug
-cfs instructions next bugs
+cfs instructions bugs next
 
 # After fixing, mark it as complete (will prompt for confirmation)
 cfs instructions bugs complete 1
@@ -628,7 +632,7 @@ cfs instructions bugs complete 1
 cfs instructions bugs complete 1 -y
 
 # Continue with the next issue
-cfs instructions next bugs
+cfs instructions bugs next
 ```
 
 ### Example Workflow: Agent Handoff

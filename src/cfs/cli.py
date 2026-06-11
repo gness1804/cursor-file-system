@@ -14,19 +14,13 @@ from cfs.cli_helpers import (
     handle_cfs_error,
 )
 from cfs.cli_instructions import (
-    _launch_claude_code,
-    _launch_codex,
-    _launch_cursor_agent,
-    _launch_gemini,
+    exec_document_impl,
     instructions_app,
     view_all,
 )
 from cfs.cli_rules import rules_app
 from cfs.exceptions import (
     CFSNotFoundError,
-    DocumentNotFoundError,
-    InvalidCategoryError,
-    InvalidDocumentIDError,
 )
 
 app = typer.Typer(
@@ -289,6 +283,8 @@ def exec_document(
     This command reads a document and outputs its content as custom instructions that can be
     given to a Cursor agent. Use AI service flags to start a session directly.
 
+    Also available as `cfs i <category> exec <id>`.
+
     Examples:
         cfs exec bugs 1          # Execute document with ID 1 in bugs category
         cfs exec bugs next       # Execute the next document in bugs category
@@ -298,150 +294,7 @@ def exec_document(
         cfs exec bugs 1 --cursor # Start Cursor Agent CLI session with document
         cfs exec bugs 1 --codex  # Start OpenAI Codex CLI session with document
     """
-    from cfs.documents import (
-        find_document_by_id,
-        get_document_title,
-        get_next_document_id,
-        parse_document_id_from_string,
-    )
-
-    # Check for mutual exclusivity of AI service flags
-    ai_flags = [
-        ("--claude", claude),
-        ("--gemini", gemini),
-        ("--cursor", cursor),
-        ("--codex", codex),
-    ]
-    selected_flags = [name for name, value in ai_flags if value]
-    if len(selected_flags) > 1:
-        console.print(
-            f"[red]Error: Only one AI service flag can be used at a time. "
-            f"You specified: {', '.join(selected_flags)}[/red]"
-        )
-        raise typer.Abort()
-
-    try:
-        # Find CFS root
-        cfs_root = core.find_cfs_root()
-    except CFSNotFoundError as e:
-        handle_cfs_error(e)
-        raise typer.Abort()
-
-    # Validate category
-    try:
-        category_path = core.get_category_path(cfs_root, category)
-    except InvalidCategoryError as e:
-        handle_cfs_error(e)
-        raise typer.Abort()
-
-    # Determine which document to execute
-    target_doc_id: Optional[int] = None
-
-    if next_flag or (doc_id and doc_id.lower() == "next"):
-        # Get next document
-        target_doc_id = get_next_document_id(category_path)
-        if target_doc_id is None:
-            console.print(
-                f"[yellow]No documents found in {category} category[/yellow]",
-            )
-            raise typer.Abort()
-    elif doc_id:
-        # Parse provided document ID
-        try:
-            target_doc_id = parse_document_id_from_string(doc_id)
-        except InvalidDocumentIDError as e:
-            handle_cfs_error(e)
-            raise typer.Abort()
-    else:
-        # No doc_id provided and --next not used - prompt user
-        console.print(
-            "[yellow]No document ID provided. Use a number, 'next', or --next flag[/yellow]"
-        )
-        raise typer.Abort()
-
-    # Find document
-    doc_path = find_document_by_id(category_path, target_doc_id)
-    if doc_path is None or not doc_path.exists():
-        try:
-            raise DocumentNotFoundError(target_doc_id, category)
-        except DocumentNotFoundError as e:
-            handle_cfs_error(e)
-            raise typer.Abort()
-
-    # Get document title and content
-    try:
-        title = get_document_title(doc_path)
-        content = doc_path.read_text(encoding="utf-8")
-    except (OSError, IOError) as e:
-        console.print(f"[red]Error reading document: {e}[/red]")
-        raise typer.Abort()
-
-    # Determine which AI service is selected (if any)
-    ai_service = None
-    if claude:
-        ai_service = "Claude Code"
-    elif gemini:
-        ai_service = "Gemini CLI"
-    elif cursor:
-        ai_service = "Cursor Agent CLI"
-    elif codex:
-        ai_service = "OpenAI Codex CLI"
-
-    # Show confirmation (unless --force)
-    if not force:
-        console.print(f"\n[bold]Document:[/bold] {title}")
-        console.print(f"[dim]Category: {category}, ID: {target_doc_id}[/dim]")
-        console.print()
-        if ai_service:
-            confirm_msg = f"Start a {ai_service} session with this document?"
-        else:
-            confirm_msg = "Execute this document? (This will output the instructions text)"
-        if not typer.confirm(confirm_msg, default=False):
-            console.print("[yellow]Execution cancelled[/yellow]")
-            raise typer.Abort()
-
-    if claude:
-        # Launch Claude Code with the document content
-        _launch_claude_code(content, category, target_doc_id)
-    elif gemini:
-        # Launch Gemini CLI with the document content
-        _launch_gemini(content, category, target_doc_id)
-    elif cursor:
-        # Launch Cursor Agent CLI with the document content
-        _launch_cursor_agent(content, category, target_doc_id)
-    elif codex:
-        # Launch OpenAI Codex CLI with the document content
-        _launch_codex(content, category, target_doc_id)
-    else:
-        # Output the document content as custom instructions
-        console.print()
-        console.print("[bold cyan]--- Custom Instructions ---[/bold cyan]")
-        console.print()
-        console.print(content)
-        console.print()
-        console.print("[bold cyan]--- End Custom Instructions ---[/bold cyan]")
-        console.print()
-
-        # Copy to clipboard
-        try:
-            import pyperclip
-
-            pyperclip.copy(content)
-            console.print("[green]✓ Instructions copied to clipboard[/green]")
-        except ImportError:
-            console.print(
-                "[yellow]⚠️  pyperclip not available - cannot copy to clipboard automatically[/yellow]",
-            )
-            console.print(
-                "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
-            )
-        except Exception as e:
-            console.print(
-                f"[yellow]⚠️  Could not copy to clipboard: {e}[/yellow]",
-            )
-            console.print(
-                "[dim]Copy the instructions above and provide them to your Cursor agent.[/dim]",
-            )
+    exec_document_impl(category, doc_id, force, next_flag, claude, gemini, cursor, codex)
 
 
 def main() -> None:
