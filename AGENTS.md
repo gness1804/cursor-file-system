@@ -52,10 +52,16 @@ src/cfs/
 The skeleton is generated in `cli.py:229` (`initial_content_lines`).
 
 ### CLI Command Pattern
-Commands are organized under `cfs instructions {category}` (aliases: `instr`, `i`):
-- `create`, `edit`, `delete`, `view`, `complete`, `close`
+Commands are organized under `cfs instructions {category}` (aliases: `instr`, `i`) and follow a
+uniform noun-first grammar: `cfs i <category> <verb> [id] [flags]`:
+- `create`, `edit`, `delete`, `view`, `complete`, `uncomplete`, `close`, `unclose`, `check`, `next`, `order`, `move`, `exec`
 
 Category commands are generated dynamically in `create_category_commands()` based on `VALID_CATEGORIES`.
+
+The old verb-first forms (`cfs i order <category>`, `cfs i next <category>`,
+`cfs i move <src> <id> <dest>`, `cfs i view <category>`, `cfs i handoff create-handoff`) are
+deprecated: they are hidden from help, still work, and print a warning pointing at the
+canonical form. They will be removed in a future version.
 
 ## Running Tests
 

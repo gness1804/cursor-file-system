@@ -29,6 +29,19 @@ BUILTIN_CATEGORIES = {
 VALID_CATEGORIES = BUILTIN_CATEGORIES
 
 DEFAULT_HIDDEN_CATEGORIES = {"tmp", "security"}
+
+# Names that already exist as commands/sub-groups under `cfs instructions`,
+# so a custom category with one of these names would shadow or collide with them.
+RESERVED_CATEGORY_NAMES = {
+    "view",
+    "next",
+    "order",
+    "move",
+    "exec",
+    "handoff",
+    "category",
+}
+
 _CUSTOM_CATEGORY_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _CATEGORY_CONFIG_FILE = ".cfs-categories.json"
 
@@ -152,6 +165,8 @@ def create_custom_category(cfs_root: Path, category: str, hidden: bool = False) 
         raise ValueError("Category name cannot be empty")
     if normalized in BUILTIN_CATEGORIES:
         raise ValueError(f"'{normalized}' is already a built-in category")
+    if normalized in RESERVED_CATEGORY_NAMES:
+        raise ValueError(f"'{normalized}' is a reserved command name and cannot be used")
     if not is_valid_custom_category_name(normalized):
         raise ValueError(
             "Category name must be lowercase letters/numbers with optional hyphens "

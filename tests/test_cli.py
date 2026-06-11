@@ -1836,3 +1836,214 @@ class TestCreateCommandWithGithubAutoSync:
             assert "Closed document" in result.output
             assert "Closed GitHub issue #77" in result.output
             mock_close.assert_called_once_with(77)
+
+
+class TestConsistentCommandGrammar:
+    """Tests for the noun-first command grammar (issue #16).
+
+    Canonical forms are `cfs i <category> <verb> [id]`; the old verb-first
+    forms still work but emit a deprecation warning.
+    """
+
+    # --- New canonical forms ---
+
+    def test_category_next(self, runner, temp_cfs):
+        """`cfs i bugs next` finds the next unresolved document."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n\nContent here.")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "next"],
+                input="n\n",  # Decline to work on it
+            )
+
+            assert "Next issue in bugs" in result.stdout
+            assert "Test Bug" in result.stdout
+            assert "deprecated" not in result.stdout
+
+    def test_category_order(self, runner, temp_cfs):
+        """`cfs i bugs order` reports when files already follow the convention."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "bugs", "order"])
+
+            assert result.exit_code == 0
+            assert "already follow the naming convention" in result.stdout
+            assert "deprecated" not in result.stdout
+
+    def test_category_order_renames(self, runner, temp_cfs):
+        """`cfs i bugs order --force` renames non-conforming files."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "5-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "bugs", "order", "--force"])
+
+            assert result.exit_code == 0
+            assert (cursor_dir / "bugs" / "1-test-bug.md").exists()
+
+    def test_category_move(self, runner, temp_cfs):
+        """`cfs i bugs move 1 features --force` moves a document."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "move", "1", "features", "--force"],
+            )
+
+            assert result.exit_code == 0
+            assert "Moved document" in result.stdout
+            assert (cursor_dir / "features" / "1-test-bug.md").exists()
+            assert not (cursor_dir / "bugs" / "1-test-bug.md").exists()
+            assert "deprecated" not in result.stdout
+
+    def test_category_exec(self, runner, temp_cfs):
+        """`cfs i bugs exec 1 --force` outputs the document content."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n\nUnique exec body.")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "exec", "1", "--force"],
+            )
+
+            assert result.exit_code == 0
+            assert "Unique exec body." in result.stdout
+            assert "deprecated" not in result.stdout
+
+    def test_handoff_create(self, runner, temp_cfs):
+        """`cfs i handoff create` generates handoff instructions."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff", "create"])
+
+            assert result.exit_code == 0
+            assert "Handoff Instructions" in result.stdout
+            assert "deprecated" not in result.stdout
+
+    # --- Deprecated verb-first forms still work but warn ---
+
+    def test_deprecated_next_warns(self, runner, temp_cfs):
+        """`cfs i next bugs` still works and emits a deprecation warning."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n\nContent here.")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "next", "bugs"],
+                input="n\n",
+            )
+
+            assert "deprecated" in result.stdout
+            assert "Next issue in bugs" in result.stdout
+
+    def test_deprecated_order_warns(self, runner, temp_cfs):
+        """`cfs i order bugs` still works and emits a deprecation warning."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "order", "bugs"])
+
+            assert result.exit_code == 0
+            assert "deprecated" in result.stdout
+            assert "already follow the naming convention" in result.stdout
+
+    def test_deprecated_move_warns(self, runner, temp_cfs):
+        """`cfs i move bugs 1 features` still works and emits a deprecation warning."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "move", "bugs", "1", "features", "--force"],
+            )
+
+            assert result.exit_code == 0
+            assert "deprecated" in result.stdout
+            assert (cursor_dir / "features" / "1-test-bug.md").exists()
+
+    def test_deprecated_view_with_category_warns(self, runner, temp_cfs):
+        """`cfs i view bugs` still works and emits a deprecation warning."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "view", "bugs"])
+
+            assert result.exit_code == 0
+            assert "deprecated" in result.stdout
+
+    def test_view_all_does_not_warn(self, runner, temp_cfs):
+        """Bare `cfs i view` (all categories) emits no deprecation warning."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "view"])
+
+            assert result.exit_code == 0
+            assert "deprecated" not in result.stdout
+
+    def test_deprecated_handoff_create_warns(self, runner, temp_cfs):
+        """`cfs i handoff create-handoff` still works and emits a deprecation warning."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(app, ["instructions", "handoff", "create-handoff"])
+
+            assert result.exit_code == 0
+            assert "deprecated" in result.stdout
+            assert "Handoff Instructions" in result.stdout
+
+    def test_category_exec_rejects_multiple_ai_flags(self, runner, temp_cfs):
+        """`cfs i bugs exec` rejects more than one AI service flag."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "exec", "1", "--force", "--claude", "--gemini"],
+            )
+
+            assert result.exit_code != 0
+            assert "Only one AI service flag" in result.stdout
+
+    def test_category_move_same_category_rejected(self, runner, temp_cfs):
+        """`cfs i bugs move <id> bugs` is rejected."""
+        tmp_path, cursor_dir = temp_cfs
+        (cursor_dir / "bugs" / "1-test-bug.md").write_text("# Test Bug\n")
+
+        with isolated_filesystem(tmp_path):
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "move", "1", "bugs", "--force"],
+            )
+
+            assert result.exit_code != 0
+            assert "same" in result.stdout
+
+    def test_custom_category_cannot_shadow_command_verbs(self, runner, temp_cfs):
+        """Custom categories cannot be named after reserved command verbs."""
+        tmp_path, cursor_dir = temp_cfs
+
+        with isolated_filesystem(tmp_path):
+            for reserved in ["next", "order", "move", "view", "exec", "handoff", "category"]:
+                result = runner.invoke(
+                    app,
+                    ["instructions", "category", "create", reserved],
+                )
+
+                assert result.exit_code != 0, f"'{reserved}' should be rejected"
+                assert "reserved" in result.stdout
