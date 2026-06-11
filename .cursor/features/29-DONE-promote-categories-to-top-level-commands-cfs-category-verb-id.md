@@ -29,3 +29,5 @@ Design decisions (agreed in discussion):
 - README/AGENTS.md updated to present the top-level form as primary.
 
 ## Acceptance criteria
+
+<!-- DONE -->
