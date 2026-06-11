@@ -26,3 +26,5 @@ Trigger case: GitHub #54 (bugs/15) is a bug report about document templates, so 
 - Regression tests cover fenced headings in extract_document_sections, build_github_issue_body, and _split_github_issue_body, plus an end-to-end convergence test.
 
 ## Acceptance criteria
+
+<!-- DONE -->
