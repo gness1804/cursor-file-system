@@ -30,16 +30,27 @@ VALID_CATEGORIES = BUILTIN_CATEGORIES
 
 DEFAULT_HIDDEN_CATEGORIES = {"tmp", "security"}
 
-# Names that already exist as commands/sub-groups under `cfs instructions`,
-# so a custom category with one of these names would shadow or collide with them.
+# Names that already exist as commands/sub-groups at the top level or under
+# `cfs instructions`, so a custom category with one of these names would shadow
+# or collide with them. Future top-level commands must be added here.
 RESERVED_CATEGORY_NAMES = {
+    # command verbs available per category
     "view",
     "next",
     "order",
     "move",
     "exec",
+    # sub-groups
     "handoff",
     "category",
+    "instructions",
+    "instr",
+    "i",
+    "gh",
+    # top-level commands
+    "init",
+    "version",
+    "tree",
 }
 
 _CUSTOM_CATEGORY_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

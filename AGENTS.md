@@ -49,11 +49,13 @@ src/cfs/
 [Criteria for completion]
 ```
 
-The skeleton is generated in `cli.py:229` (`initial_content_lines`).
+The skeleton is generated in `cli_instructions.py` (`initial_content_lines`, inside the category `create` command).
 
 ### CLI Command Pattern
-Commands are organized under `cfs instructions {category}` (aliases: `instr`, `i`) and follow a
-uniform noun-first grammar: `cfs i <category> <verb> [id] [flags]`:
+Category commands work directly at the top level — `cfs <category> <verb> [id] [flags]` —
+and identically under the permanent `instructions`/`instr`/`i` aliases
+(e.g. `cfs bugs complete 7` == `cfs i bugs complete 7`). All follow a uniform
+noun-first grammar:
 - `create`, `edit`, `delete`, `view`, `complete`, `uncomplete`, `close`, `unclose`, `check`, `next`, `order`, `move`, `exec`
 
 Category commands are generated dynamically in `create_category_commands()` based on `VALID_CATEGORIES`.

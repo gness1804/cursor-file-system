@@ -14,7 +14,10 @@ from cfs.cli_helpers import (
     handle_cfs_error,
 )
 from cfs.cli_instructions import (
+    attach_categories_to,
+    category_admin_app,
     exec_document_impl,
+    handoff_app,
     instructions_app,
     view_all,
 )
@@ -35,6 +38,13 @@ app.add_typer(instructions_app, name="instr")  # Short alias for instructions
 app.add_typer(instructions_app, name="i")  # Shorter alias for instructions
 app.add_typer(rules_app, name="rules")
 app.add_typer(gh_app, name="gh")
+
+# Promote category command groups to the top level so `cfs bugs complete 7`
+# works alongside the equivalent `cfs i bugs complete 7`. The instructions
+# aliases above are permanent, not deprecated.
+attach_categories_to(app)
+app.add_typer(handoff_app, name="handoff")
+app.add_typer(category_admin_app, name="category")
 
 
 # Global options callback
@@ -125,10 +135,10 @@ This project uses CFS (Cursor File Structure) to manage instruction documents.{l
 ## Usage
 
 ```bash
-cfs instructions features create  # Create a feature request
-cfs instructions bugs create       # Create a bug report
-cfs instructions view              # View all documents
-cfs gh sync                        # Sync with GitHub issues
+cfs features create   # Create a feature request
+cfs bugs create       # Create a bug report
+cfs view              # View incomplete documents (--all for everything)
+cfs gh sync           # Sync with GitHub issues
 ```
 """
         init_file.write_text(init_content, encoding="utf-8")
@@ -225,14 +235,25 @@ def tree() -> None:
     console.print(tree_output)
 
 
-# Top-level view command (shortcut for `cfs i view -i`)
+# Top-level view command (same semantics as `cfs i view`)
 @app.command("view")
-def view_incomplete() -> None:
-    """View all incomplete documents across all categories.
-
-    This is a shortcut for 'cfs i view -i'.
-    """
-    view_all(category=None, incomplete_only=True)
+def view_incomplete(
+    all_docs: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Include completed/closed documents",
+    ),
+    incomplete_only: bool = typer.Option(
+        False,
+        "--incomplete-only",
+        "-i",
+        hidden=True,
+        help="Deprecated: incomplete documents are now shown by default",
+    ),
+) -> None:
+    """View incomplete documents across all categories (use --all to include completed)."""
+    view_all(category=None, all_docs=all_docs, incomplete_only=incomplete_only)
 
 
 @app.command("exec")

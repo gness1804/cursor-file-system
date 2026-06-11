@@ -67,6 +67,20 @@ def _warn_deprecated(old_form: str, new_form: str) -> None:
 
 _REGISTERED_CATEGORY_COMMANDS: set[str] = set()
 
+# Every Typer app that should expose the per-category command groups. The
+# instructions app is always a target; the main `cfs` app registers itself via
+# attach_categories_to() so categories also work at the top level
+# (`cfs bugs complete 7` as well as `cfs i bugs complete 7`).
+_CATEGORY_APP_TARGETS: list[typer.Typer] = [instructions_app]
+_CATEGORY_APPS: dict[str, typer.Typer] = {}
+
+
+def attach_categories_to(target_app: typer.Typer) -> None:
+    """Expose all category command groups (current and future) on another Typer app."""
+    _CATEGORY_APP_TARGETS.append(target_app)
+    for name, category_app in _CATEGORY_APPS.items():
+        target_app.add_typer(category_app, name=name)
+
 
 @category_admin_app.command("create")
 def create_category_command(
@@ -194,9 +208,12 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
         if category == "rules" or category in _REGISTERED_CATEGORY_COMMANDS:
             continue
 
-        # Create a Typer app for this category
+        # Create a Typer app for this category and register it on every target
+        # app (the instructions group plus the top-level `cfs` app).
         category_app = typer.Typer(name=category, help=f"Manage {category} documents")
-        instructions_app.add_typer(category_app, name=category)
+        _CATEGORY_APPS[category] = category_app
+        for target_app in _CATEGORY_APP_TARGETS:
+            target_app.add_typer(category_app, name=category)
         _REGISTERED_CATEGORY_COMMANDS.add(category)
 
         # Create all commands for this category with proper closure capture
@@ -1479,14 +1496,21 @@ def view_all(
         None,
         help="Optional category name to filter by",
     ),
+    all_docs: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Include completed/closed documents",
+    ),
     incomplete_only: bool = typer.Option(
         False,
         "--incomplete-only",
         "-i",
-        help="Show only incomplete issues",
+        hidden=True,
+        help="Deprecated: incomplete documents are now shown by default",
     ),
 ) -> None:
-    """View all documents across all categories.
+    """View incomplete documents across all categories (use --all to include completed).
 
     Passing a category argument is deprecated; use `cfs i <category> view` instead.
     """
@@ -1497,6 +1521,10 @@ def view_all(
 
     if category:
         _warn_deprecated(f"cfs i view {category}", f"cfs i {category} view")
+
+    # Incomplete-only is the default; --all includes completed/closed documents.
+    # The hidden -i flag is accepted for backward compatibility but matches the default.
+    incomplete_only = not all_docs
 
     try:
         # Find CFS root
@@ -1516,7 +1544,7 @@ def view_all(
     # List documents
     docs_dict = documents.list_documents(cfs_root, category)
 
-    # Filter to incomplete only if flag is set
+    # Filter to incomplete only unless --all is set
     if incomplete_only:
         for cat in docs_dict:
             docs_dict[cat] = [doc for doc in docs_dict[cat] if is_document_incomplete(doc)]
