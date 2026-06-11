@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-06-11
+
 ### Added
 - Consistent noun-first command grammar (#16): every category-scoped command now follows `cfs i <category> <verb> [id]`. New canonical forms: `cfs i <category> next`, `cfs i <category> order`, `cfs i <category> move <id> <dest-category>`, `cfs i <category> exec <id>`, and `cfs i handoff create`.
 - New built-in `infrastructure-and-deployment` category for infrastructure and deployment-related task documents (peer of `bugs`, `features`, `refactors`, etc.)
