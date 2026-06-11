@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-06-11
+
 ### Added
 - Top-level category commands (#59): the `instructions`/`instr`/`i` prefix is now optional — `cfs bugs complete 7`, `cfs features next`, `cfs handoff pickup`, and `cfs category create <name>` work directly at the top level. The prefixed forms remain permanent, equivalent aliases. Custom categories created at runtime are also available at the top level immediately.
 - Reserved top-level names: custom categories can no longer be named `init`, `version`, `tree`, `gh`, `instructions`, `instr`, or `i` (in addition to the command verbs already reserved).
