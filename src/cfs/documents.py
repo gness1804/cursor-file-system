@@ -1294,8 +1294,52 @@ def remove_github_issue_link(content: str) -> str:
     return remove_frontmatter_key(content, "github_issue")
 
 
+_CODE_FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
+
+
+class CodeFenceTracker:
+    """Track fenced code block state while scanning markdown line by line.
+
+    Follows the CommonMark rules that matter here: a fence opens with three or
+    more backticks or tildes (an info string may follow), and closes only with
+    a fence of the same character at least as long, with nothing else on the
+    line. Lines inside a fence — including the fence delimiters themselves —
+    must not be parsed as headings; otherwise documents whose content embeds
+    template examples (e.g. a literal `## Contents` inside a code block) are
+    extracted differently than they were written, which broke `gh sync`
+    round-trips.
+    """
+
+    def __init__(self) -> None:
+        self._open_char: Optional[str] = None
+        self._open_len = 0
+
+    def process(self, line: str) -> bool:
+        """Advance state with this line; return True if it belongs to a fenced block."""
+        stripped = line.strip()
+        match = _CODE_FENCE_RE.match(stripped)
+        if self._open_char is None:
+            if match:
+                self._open_char = match.group(1)[0]
+                self._open_len = len(match.group(1))
+                return True
+            return False
+        if (
+            match
+            and match.group(1)[0] == self._open_char
+            and len(match.group(1)) >= self._open_len
+            and stripped[len(match.group(1)) :].strip() == ""
+        ):
+            self._open_char = None
+            self._open_len = 0
+        return True
+
+
 def extract_document_sections(content: str) -> Dict[str, str]:
     """Extract sections from a CFS document.
+
+    Heading detection is code-fence-aware: lines inside ``` or ~~~ blocks are
+    treated as section content, never as headers.
 
     Args:
         content: Full document content (with or without frontmatter).
@@ -1316,8 +1360,15 @@ def extract_document_sections(content: str) -> Dict[str, str]:
     lines = body.split("\n")
     current_section = None
     section_content: List[str] = []
+    fence = CodeFenceTracker()
 
     for line in lines:
+        # Lines inside fenced code blocks are content, never headers
+        if fence.process(line):
+            if current_section:
+                section_content.append(line)
+            continue
+
         # Check for title (h1)
         if line.startswith("# ") and not sections["title"]:
             sections["title"] = line[2:].strip()
@@ -1325,21 +1376,26 @@ def extract_document_sections(content: str) -> Dict[str, str]:
 
         # Check for section headers (h2)
         if line.startswith("## "):
-            # Save previous section content
-            if current_section and section_content:
-                sections[current_section] = "\n".join(section_content).strip()
-                section_content = []
-
             header = line[3:].strip().lower()
+            known_section = None
             if "working" in header and "directory" in header:
-                current_section = "working_directory"
+                known_section = "working_directory"
             elif header == "contents":
-                current_section = "contents"
+                known_section = "contents"
             elif "acceptance" in header and "criteria" in header:
-                current_section = "acceptance_criteria"
-            else:
-                current_section = None
-            continue
+                known_section = "acceptance_criteria"
+
+            if known_section is not None:
+                # Save previous section content and switch sections
+                if current_section and section_content:
+                    sections[current_section] = "\n".join(section_content).strip()
+                    section_content = []
+                current_section = known_section
+                continue
+            # Unknown h2 headers (e.g. "## Summary" in a GitHub-sourced body)
+            # are subsections of the current section, not section breaks —
+            # treating them as breaks dropped their content and broke gh sync
+            # round-trips. Fall through to accumulate the line as content.
 
         # Accumulate content for current section
         if current_section:

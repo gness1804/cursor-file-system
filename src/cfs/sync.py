@@ -19,6 +19,7 @@ from cfs.core import (
     get_hidden_categories,
 )
 from cfs.documents import (
+    CodeFenceTracker,
     build_github_issue_body,
     check_duplicates,
     complete_document,
@@ -219,9 +220,12 @@ def _split_github_issue_body(body: str, normalize: bool = False) -> Tuple[str, s
     contents_lines: List[str] = []
     acceptance_lines: List[str] = []
     in_acceptance = False
+    fence = CodeFenceTracker()
 
     for line in lines:
-        if _ACCEPTANCE_HEADER_RE.match(line.strip()):
+        # Heading detection is code-fence-aware: a literal "## Acceptance
+        # Criteria" inside a code block is content, not a section break.
+        if not fence.process(line) and _ACCEPTANCE_HEADER_RE.match(line.strip()):
             in_acceptance = True
             continue
         if in_acceptance:

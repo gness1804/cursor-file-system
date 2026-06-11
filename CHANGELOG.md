@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-06-11
+
+### Fixed
+- `cfs gh sync` conflict loop (bugs/16, #61): markdown section parsing is now code-fence-aware, and unknown `## ` subsections are kept as content of their parent section instead of being dropped. Previously, documents whose content embedded heading-like lines (e.g. a template example inside a code block, or GitHub-style `## Summary` subsections) were extracted differently than they were written, so a resolved content conflict reappeared on every subsequent sync — and resolving with "use CFS" could truncate the GitHub issue body.
+
 ## [0.12.0] - 2026-06-11
 
 ### Added

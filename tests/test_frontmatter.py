@@ -395,3 +395,126 @@ Here's some **bold** and `code`.
         assert "**bold**" in body
         assert "`code`" in body
         assert "- List item 1" in body
+
+
+class TestCodeFenceAwareExtraction:
+    """Section extraction must not treat heading-like lines inside code fences
+    as section breaks, and unknown h2 subsections belong to their parent
+    section (bugs/16: gh sync conflict loop)."""
+
+    def test_fenced_headers_are_content_not_section_breaks(self):
+        content = """# Title
+
+## Contents
+
+Example of the template:
+
+```markdown
+# Repro
+
+## Working directory
+
+`~/some/path`
+
+## Contents
+
+MY BODY LINE ONE
+
+## Acceptance Criteria
+```
+
+After the fence.
+
+## Acceptance criteria
+
+- Real criterion
+"""
+        sections = extract_document_sections(content)
+
+        assert "MY BODY LINE ONE" in sections["contents"]
+        assert "## Working directory" in sections["contents"]
+        assert "After the fence." in sections["contents"]
+        # The fenced `~/some/path` must not leak into working_directory
+        assert sections["working_directory"] == ""
+        assert sections["acceptance_criteria"] == "- Real criterion"
+
+    def test_tilde_fences_are_respected(self):
+        content = """# Title
+
+## Contents
+
+~~~
+## Acceptance criteria
+~~~
+
+## Acceptance criteria
+
+- Real
+"""
+        sections = extract_document_sections(content)
+
+        assert "## Acceptance criteria" in sections["contents"]
+        assert sections["acceptance_criteria"] == "- Real"
+
+    def test_unknown_h2_headers_are_kept_as_section_content(self):
+        content = """# Title
+
+## Contents
+
+## Summary
+
+GitHub-style body with its own subsections.
+
+## Environment
+
+- macOS
+
+## Acceptance criteria
+
+- Done
+"""
+        sections = extract_document_sections(content)
+
+        assert "## Summary" in sections["contents"]
+        assert "## Environment" in sections["contents"]
+        assert "- macOS" in sections["contents"]
+        assert sections["acceptance_criteria"] == "- Done"
+
+    def test_round_trip_extraction_is_stable(self):
+        """Extracting, embedding into a fresh skeleton, and re-extracting must
+        produce the same contents — this is what keeps gh sync conflicts from
+        reappearing after resolution."""
+        github_style_body = """## Summary
+
+Report with a template example:
+
+```markdown
+## Contents
+
+MY BODY LINE ONE
+```
+
+Closing remarks."""
+
+        doc = "\n".join(
+            [
+                "# Some Issue",
+                "",
+                "## Working directory",
+                "",
+                "`~/repo`",
+                "",
+                "## Contents",
+                "",
+                github_style_body,
+                "",
+                "## Acceptance criteria",
+                "",
+            ]
+        )
+
+        first = extract_document_sections(doc)["contents"]
+        redoc = f"# Some Issue\n\n## Contents\n\n{first}\n"
+        second = extract_document_sections(redoc)["contents"]
+
+        assert first == second == github_style_body

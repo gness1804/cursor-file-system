@@ -820,3 +820,90 @@ class TestBuildSyncPlanDuplicates:
 
         create_cfs_actions = [a for a in plan.get_actions() if a.action == SyncAction.CREATE_CFS]
         assert len(create_cfs_actions) == 0
+
+
+class TestFenceAwareSyncComparison:
+    """Conflict comparison and body splitting must be code-fence-aware so a
+    resolved conflict stays resolved (bugs/16)."""
+
+    GITHUB_BODY = """## Summary
+
+A report whose repro embeds the document template:
+
+```markdown
+# Repro
+
+## Contents
+
+MY BODY LINE ONE
+
+## Acceptance Criteria
+```
+
+Closing remarks.
+
+## Acceptance criteria
+
+- Real criterion
+"""
+
+    def test_split_ignores_fenced_acceptance_header(self):
+        from cfs.sync import _split_github_issue_body
+
+        contents, acceptance = _split_github_issue_body(self.GITHUB_BODY, normalize=False)
+
+        assert "MY BODY LINE ONE" in contents
+        assert "## Acceptance Criteria" in contents  # the fenced one stays in contents
+        assert acceptance.strip() == "- Real criterion"
+
+    def test_remote_resolution_converges(self):
+        """Rebuilding the CFS doc from the GitHub body (the 'use GitHub'
+        resolution) must produce equal canonical bodies on the next compare."""
+        from cfs.sync import _get_comparable_bodies, _split_github_issue_body
+
+        contents, acceptance = _split_github_issue_body(self.GITHUB_BODY, normalize=False)
+        resolved_doc_lines = [
+            "# Some Issue",
+            "",
+            "## Working directory",
+            "",
+            "`~/repo`",
+            "",
+            "## Contents",
+            "",
+            contents,
+            "",
+            "## Acceptance criteria",
+            "",
+            acceptance,
+        ]
+        resolved_doc = "\n".join(resolved_doc_lines)
+
+        cfs_body, github_body = _get_comparable_bodies(resolved_doc, self.GITHUB_BODY)
+
+        assert cfs_body == github_body
+
+    def test_local_resolution_converges(self):
+        """Pushing the CFS doc to GitHub (the 'use CFS' resolution) must also
+        produce equal canonical bodies on the next compare."""
+        from cfs.documents import build_github_issue_body
+        from cfs.sync import _get_comparable_bodies
+
+        cfs_doc = "\n".join(
+            [
+                "# Some Issue",
+                "",
+                "## Contents",
+                "",
+                self.GITHUB_BODY.split("\n## Acceptance criteria")[0],
+                "",
+                "## Acceptance criteria",
+                "",
+                "- Real criterion",
+            ]
+        )
+        pushed_body = build_github_issue_body(cfs_doc)
+
+        cfs_body, github_body = _get_comparable_bodies(cfs_doc, pushed_body)
+
+        assert cfs_body == github_body
