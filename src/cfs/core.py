@@ -118,7 +118,14 @@ def _write_category_config(cfs_root: Path, config: dict) -> None:
 
 
 def get_custom_categories(cfs_root: Path) -> Set[str]:
-    """Get all custom categories present as directories under .cursor."""
+    """Get all custom categories present as directories under .cursor.
+
+    Discovery applies the same guards as creation: directories whose names are
+    reserved command names or are not valid kebab-case are ignored. Without
+    this, a crafted directory in an untrusted repo (e.g. a cloned project
+    shipping `.cursor/gh/`) would be registered as a top-level command group
+    and shadow the real command.
+    """
     if not cfs_root.exists() or not cfs_root.is_dir():
         return set()
 
@@ -129,6 +136,10 @@ def get_custom_categories(cfs_root: Path) -> Set[str]:
         if entry.name.startswith("."):
             continue
         if entry.name in BUILTIN_CATEGORIES:
+            continue
+        if entry.name in RESERVED_CATEGORY_NAMES:
+            continue
+        if not is_valid_custom_category_name(entry.name):
             continue
         categories.add(entry.name)
     return categories

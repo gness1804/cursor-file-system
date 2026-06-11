@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Unified `view` semantics (#59): both `cfs view` and `cfs i view` now show incomplete documents by default; pass `--all`/`-a` to include completed/closed documents. (Previously `cfs i view` showed everything by default; the `-i` flag is still accepted but is now the default behavior.)
 
+### Security
+- Category discovery from disk now applies the same guards as category creation (reserved names and kebab-case validation). Previously a crafted directory in an untrusted repo (e.g. a cloned project shipping `.cursor/gh/`) would be registered as a top-level command group and could shadow the real command. Real command groups are also now registered after categories so they win any name collision (defense-in-depth).
+
 ## [0.11.0] - 2026-06-11
 
 ### Added

@@ -32,17 +32,19 @@ app = typer.Typer(
     add_completion=False,
 )
 
+# Promote category command groups to the top level so `cfs bugs complete 7`
+# works alongside the equivalent `cfs i bugs complete 7`. Categories are
+# registered BEFORE the named groups below so that on any name collision the
+# real command groups win (Click resolves duplicate names last-wins). The
+# discovery path also filters reserved names — this ordering is defense-in-depth.
+attach_categories_to(app)
+
 # Register subcommand groups
 app.add_typer(instructions_app, name="instructions")
 app.add_typer(instructions_app, name="instr")  # Short alias for instructions
 app.add_typer(instructions_app, name="i")  # Shorter alias for instructions
 app.add_typer(rules_app, name="rules")
 app.add_typer(gh_app, name="gh")
-
-# Promote category command groups to the top level so `cfs bugs complete 7`
-# works alongside the equivalent `cfs i bugs complete 7`. The instructions
-# aliases above are permanent, not deprecated.
-attach_categories_to(app)
 app.add_typer(handoff_app, name="handoff")
 app.add_typer(category_admin_app, name="category")
 
