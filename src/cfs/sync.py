@@ -673,6 +673,14 @@ def prompt_conflict_resolution(
         console.print("[red]Invalid choice. Please try again.[/red]")
 
 
+def _warn_prompt_eof(console: Console, title: str) -> None:
+    """Warn that a prompt ran without usable stdin — a human must rerun it."""
+    console.print(
+        f"[yellow]Needs interactive resolution: '{title}' "
+        "(no input available). Run 'cfs gh sync' in a terminal.[/yellow]"
+    )
+
+
 def execute_sync_plan(
     console: Console,
     cfs_root: Path,
@@ -698,6 +706,7 @@ def execute_sync_plan(
         "reopened_cfs": 0,
         "resolved_conflicts": 0,
         "skipped": 0,
+        "needs_interactive": 0,
         "errors": 0,
     }
 
@@ -719,8 +728,23 @@ def execute_sync_plan(
                             f"from GitHub #{item.github_issue.number}[/dim]"
                         )
                         continue
+                    elif not console.is_interactive:
+                        # Don't prompt without a TTY — input() would crash with
+                        # EOFError. A human needs to pick the category.
+                        console.print(
+                            f"[yellow]Needs interactive resolution: GitHub "
+                            f"#{item.github_issue.number} ('{item.title}') has no "
+                            "category. Run 'cfs gh sync' in a terminal to select one.[/yellow]"
+                        )
+                        results["needs_interactive"] += 1
+                        continue
                     else:
-                        category = prompt_category_selection(console, item.title)
+                        try:
+                            category = prompt_category_selection(console, item.title)
+                        except EOFError:
+                            _warn_prompt_eof(console, item.title)
+                            results["needs_interactive"] += 1
+                            continue
                         if category is None:
                             results["skipped"] += 1
                             continue
@@ -782,11 +806,12 @@ def execute_sync_plan(
             elif item.action == SyncAction.CONTENT_CONFLICT:
                 if not console.is_interactive:
                     console.print(
-                        f"[red]Error: Content conflict for '{item.title}' "
-                        f"({item.category}/{item.cfs_doc_id} vs GitHub #{item.github_issue.number}). "
-                        "Run in an interactive shell to resolve.[/red]"
+                        f"[yellow]Needs interactive resolution: content conflict for "
+                        f"'{item.title}' ({item.category}/{item.cfs_doc_id} vs GitHub "
+                        f"#{item.github_issue.number}). "
+                        "Run 'cfs gh sync' in a terminal to resolve.[/yellow]"
                     )
-                    results["errors"] += 1
+                    results["needs_interactive"] += 1
                     continue
 
                 if dry_run:
@@ -795,7 +820,12 @@ def execute_sync_plan(
                     )
                     results["skipped"] += 1
                 else:
-                    resolution = prompt_conflict_resolution(console, item)
+                    try:
+                        resolution = prompt_conflict_resolution(console, item)
+                    except EOFError:
+                        _warn_prompt_eof(console, item.title)
+                        results["needs_interactive"] += 1
+                        continue
 
                     if resolution is None:
                         console.print("[yellow]Sync aborted by user.[/yellow]")
@@ -1065,7 +1095,24 @@ def display_sync_results(console: Console, results: Dict[str, int]) -> None:
 
     for action, count in results.items():
         if count > 0:
-            style = "red" if action == "errors" else "green"
+            if action == "errors":
+                style = "red"
+            elif action == "needs_interactive":
+                style = "yellow"
+            else:
+                style = "green"
             table.add_row(action.replace("_", " ").title(), f"[{style}]{count}[/{style}]")
 
     console.print(table)
+
+    # Closing summary so unresolved items are impossible to miss, especially
+    # when the output is captured by a hook or an agent transcript.
+    needs_interactive = results.get("needs_interactive", 0)
+    errors = results.get("errors", 0)
+    if needs_interactive > 0:
+        console.print(
+            f"[yellow]⚠ {needs_interactive} item(s) need interactive resolution — "
+            "run 'cfs gh sync' in a terminal.[/yellow]"
+        )
+    if errors > 0:
+        console.print(f"[red]❌ {errors} sync error(s) occurred — see messages above.[/red]")
