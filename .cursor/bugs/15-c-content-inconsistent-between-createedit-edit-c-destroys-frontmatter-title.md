@@ -39,9 +39,7 @@ Resulting file:
 
 MY BODY LINE ONE
 
-
 ## Acceptance criteria
-
 ```
 
 So `-c` content is inserted into the **Contents** section of a fixed scaffold. A user writing a *complete* document (with their own `## Working directory` / `## Acceptance criteria`) ends up with **duplicated headers** — e.g. two `## Working directory` blocks and two `## Acceptance criteria` blocks (one filled, one empty).
@@ -75,3 +73,6 @@ The title (`# ...`), all template sections, **and the YAML frontmatter** (`---\n
 3. If `create -c` keeps templating, either skip injecting sections the content already provides, or document that `-c` should contain only the Contents-section body.
 
 Happy to provide more detail or a PR if useful.
+
+
+## Acceptance criteria
