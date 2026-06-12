@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-12
+
 ### Added
 - `cfs gh sync --strict`: exits with code 1 when real sync errors occur, so pre-commit hooks and CI (`set -e`) stop instead of silently passing. Items that merely need a human (content conflicts, category selection) never fail the command, even in strict mode.
 - Sync results now end with a prominent closing summary whenever items remain unresolved (`⚠ N item(s) need interactive resolution…` / `❌ N sync error(s)…`), so agent-driven runs can't miss them.
