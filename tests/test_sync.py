@@ -627,19 +627,104 @@ class TestExecuteSyncPlan:
         # Execute the plan
         results = execute_sync_plan(mock_console, cfs_root, plan)
 
-        # Assert that an error was reported and no conflict was resolved
-        assert results["errors"] == 1
+        # Conflict is flagged as needing a human, not as a real error
+        assert results["needs_interactive"] == 1
+        assert results["errors"] == 0
         assert results["resolved_conflicts"] == 0
         assert results["skipped"] == 0
 
         # Assert that the prompt was not called
         mock_prompt_conflict_resolution.assert_not_called()
 
-        # Assert that a relevant error message was printed
+        # Assert that a relevant warning message was printed
         mock_console.print.assert_called_once()
         call_args = mock_console.print.call_args[0][0]
-        assert "Error: Content conflict" in call_args
-        assert "Run in an interactive shell to resolve" in call_args
+        assert "Needs interactive resolution: content conflict" in call_args
+        assert "Run 'cfs gh sync' in a terminal to resolve" in call_args
+
+    @patch("cfs.sync.prompt_category_selection")
+    def test_create_cfs_without_category_in_non_interactive_mode(
+        self,
+        mock_prompt_category,
+        tmp_path,
+    ):
+        """CREATE_CFS with no category skips the prompt without a TTY."""
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = False
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+
+        issue = GitHubIssue(number=2, title="New", body="body", state="open", labels=[], url="")
+        item = SyncItem(
+            action=SyncAction.CREATE_CFS,
+            category=None,
+            github_issue=issue,
+            title="New",
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        assert results["needs_interactive"] == 1
+        assert results["errors"] == 0
+        assert results["created_cfs"] == 0
+        mock_prompt_category.assert_not_called()
+        call_args = mock_console.print.call_args[0][0]
+        assert "Needs interactive resolution" in call_args
+        assert "has no" in call_args
+
+    @patch("cfs.sync.prompt_category_selection", side_effect=EOFError)
+    def test_prompt_eoferror_counts_as_needs_interactive(
+        self,
+        mock_prompt_category,
+        tmp_path,
+    ):
+        """An EOFError from a prompt is not counted as a real error."""
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = True  # claims interactive, but stdin is closed
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+
+        issue = GitHubIssue(number=3, title="New", body="body", state="open", labels=[], url="")
+        item = SyncItem(
+            action=SyncAction.CREATE_CFS,
+            category=None,
+            github_issue=issue,
+            title="New",
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        assert results["needs_interactive"] == 1
+        assert results["errors"] == 0
+
+    @patch("cfs.sync.close_issue", side_effect=RuntimeError("GitHub API failure"))
+    def test_real_failure_still_counts_as_error(self, mock_close, tmp_path):
+        """A genuine exception (e.g. GitHub API failure) stays a real error."""
+        mock_console = MagicMock(spec=Console)
+        mock_console.is_interactive = False
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir()
+
+        issue = GitHubIssue(number=4, title="Done", body="body", state="open", labels=[], url="")
+        item = SyncItem(
+            action=SyncAction.CLOSE_GITHUB,
+            category="bugs",
+            cfs_doc_id=1,
+            cfs_doc_path=cfs_root / "1-DONE-test.md",
+            github_issue=issue,
+            title="Done",
+        )
+        plan = SyncPlan(items=[item])
+
+        results = execute_sync_plan(mock_console, cfs_root, plan)
+
+        assert results["errors"] == 1
+        assert results["needs_interactive"] == 0
 
     @patch("cfs.sync.uncomplete_document")
     def test_execute_reopen_cfs_done_doc(self, mock_uncomplete, tmp_path):
@@ -907,3 +992,30 @@ Closing remarks.
         cfs_body, github_body = _get_comparable_bodies(cfs_doc, pushed_body)
 
         assert cfs_body == github_body
+
+
+class TestDisplaySyncResults:
+    """Tests for the closing summary in display_sync_results."""
+
+    def _render(self, results):
+        from io import StringIO
+
+        from cfs.sync import display_sync_results
+
+        console = Console(file=StringIO(), width=120)
+        display_sync_results(console, results)
+        return console.file.getvalue()
+
+    def test_needs_interactive_summary_printed(self):
+        output = self._render({"needs_interactive": 3, "errors": 0})
+        assert "3 item(s) need interactive resolution" in output
+        assert "run 'cfs gh sync' in a terminal" in output
+
+    def test_errors_summary_printed(self):
+        output = self._render({"needs_interactive": 0, "errors": 2})
+        assert "2 sync error(s) occurred" in output
+
+    def test_no_summary_when_clean(self):
+        output = self._render({"created_cfs": 1, "needs_interactive": 0, "errors": 0})
+        assert "interactive resolution" not in output
+        assert "error(s) occurred" not in output

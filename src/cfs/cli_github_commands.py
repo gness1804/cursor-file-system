@@ -31,6 +31,14 @@ def gh_sync(
         "-ec",
         help="Exclude an additional category from sync. Can be used multiple times.",
     ),
+    strict: bool = typer.Option(
+        False,
+        "--strict",
+        help=(
+            "Exit with code 1 if real sync errors occur (for hooks/CI). "
+            "Items that merely need interactive resolution do not fail."
+        ),
+    ),
 ) -> None:
     """Synchronize CFS documents with GitHub issues.
 
@@ -132,6 +140,9 @@ def gh_sync(
     # Display results
     console.print()
     display_sync_results(console, results)
+
+    if strict and results["errors"] > 0:
+        raise typer.Exit(1)
 
 
 @gh_app.command("status")

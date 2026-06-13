@@ -6,7 +6,8 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import patch
+from contextlib import ExitStack
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -2192,3 +2193,46 @@ class TestUnifiedViewSemantics:
 
             assert result.exit_code == 0
             assert "finished-bug" in result.stdout
+
+
+class TestGhSyncStrict:
+    """Tests for the gh sync --strict exit-code behavior."""
+
+    def _invoke_sync(self, runner, tmp_path, results, args):
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir(exist_ok=True)
+
+        mock_plan = MagicMock()
+        mock_plan.has_actions.return_value = True
+
+        patches = [
+            patch("cfs.github.check_gh_installed", return_value=True),
+            patch("cfs.github.check_gh_authenticated", return_value=True),
+            patch("cfs.github.list_issues", return_value=[]),
+            patch("cfs.cli_github_commands.core.find_cfs_root", return_value=cfs_root),
+            patch("cfs.cli_github_commands.core.get_all_categories", return_value={"bugs"}),
+            patch("cfs.sync.compute_sync_categories", return_value={"bugs"}),
+            patch("cfs.sync.build_sync_plan", return_value=mock_plan),
+            patch("cfs.sync.display_sync_status"),
+            patch("cfs.sync.display_sync_results"),
+            patch("cfs.sync.execute_sync_plan", return_value=results),
+        ]
+        with ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            return runner.invoke(app, ["gh", "sync", *args])
+
+    def test_strict_fails_on_real_errors(self, runner, tmp_path):
+        results = {"errors": 2, "needs_interactive": 0}
+        result = self._invoke_sync(runner, tmp_path, results, ["--strict"])
+        assert result.exit_code == 1
+
+    def test_strict_passes_when_only_interactive_items_remain(self, runner, tmp_path):
+        results = {"errors": 0, "needs_interactive": 3}
+        result = self._invoke_sync(runner, tmp_path, results, ["--strict"])
+        assert result.exit_code == 0
+
+    def test_default_mode_never_fails_on_errors(self, runner, tmp_path):
+        results = {"errors": 2, "needs_interactive": 1}
+        result = self._invoke_sync(runner, tmp_path, results, [])
+        assert result.exit_code == 0

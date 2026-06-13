@@ -489,11 +489,13 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 
 Bidirectional sync between CFS documents and GitHub issues:
 
-- `cfs gh sync [--dry-run] [--include-category CAT] [--exclude-category CAT]` - Sync CFS documents with GitHub issues
+- `cfs gh sync [--dry-run] [--strict] [--include-category CAT] [--exclude-category CAT]` - Sync CFS documents with GitHub issues
 - `cfs gh status [--include-category CAT] [--exclude-category CAT]` - Show sync status
 - `cfs gh link <category> <id> <issue_number>` - Manually link a CFS document to a GitHub issue
 - `cfs gh unlink <category> <id>` - Remove GitHub issue link from a CFS document
 - `cfs gh purge-excluded [--dry-run] [--include-category CAT] [--exclude-category CAT]` - Delete GitHub issues for excluded categories and unlink CFS documents
+
+**Strict mode for hooks and CI:** `cfs gh sync --strict` exits with code 1 when real sync errors occur (GitHub API failures, file-operation errors), so a `set -e` pre-commit hook or CI step stops instead of silently passing. Items that just need a human — content conflicts or new issues without a category — never fail the command, even in strict mode; they are reported as `Needs Interactive` with a closing summary telling you to run `cfs gh sync` in a terminal.
 
 **Category exclusion:** By default, the `tmp` and `security` categories are excluded from GitHub sync. The `security` category is excluded to prevent potential vulnerability details from being exposed in public GitHub issues.
 
