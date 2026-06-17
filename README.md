@@ -107,6 +107,12 @@ cfs instructions bugs create --title "Fix login bug" --content "Description of t
 # Or: cfs instr bugs create -t "Fix login bug" -c "Description of the bug"
 ```
 
+> **`--content` is the Contents-section body.** In both `create` and `edit`,
+> `-c/--content` supplies only the body of the `## Contents` section — CFS
+> generates (and on edit, preserves) the title, `## Working directory`, and
+> `## Acceptance criteria` sections for you. Pass just the body, not a full
+> structured document, to avoid duplicated headers.
+
 **Example workflow:**
 ```bash
 $ cfs instructions bugs create --title "Fix memory leak in API"
@@ -126,8 +132,10 @@ cfs instructions bugs edit 1
 cfs instructions bugs edit 1-fix-login-bug.md
 
 # Edit in non-interactive mode (bypasses editor, ideal for AI agents)
-cfs instructions bugs edit 1 --content "Full replacement content here"
-# Or: cfs instr bugs edit 1 -c "Full replacement content here"
+# Replaces only the Contents-section body; frontmatter, title, and the other
+# sections are preserved.
+cfs instructions bugs edit 1 --content "New Contents-section body"
+# Or: cfs instr bugs edit 1 -c "New Contents-section body"
 ```
 
 The editor will open with the current content (unless `--content` is provided). Save and close to update the document.

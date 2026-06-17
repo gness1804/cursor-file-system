@@ -20,6 +20,7 @@ from cfs.documents import (
     parse_document_id,
     parse_document_id_from_string,
     remove_duplicate_documents,
+    replace_contents_section,
     unclose_document,
     uncomplete_document,
 )
@@ -274,6 +275,86 @@ class TestEditDocument:
 
         with pytest.raises(DocumentNotFoundError):
             edit_document(category_path, 999, "content")
+
+
+class TestReplaceContentsSection:
+    """Tests for replace_contents_section function."""
+
+    STANDARD = (
+        "# Test Bug\n\n"
+        "## Working directory\n\n`~/proj`\n\n"
+        "## Contents\n\nOld body\n\n"
+        "## Acceptance criteria\n\nDone when fixed\n"
+    )
+
+    def test_replaces_only_contents_body(self):
+        result = replace_contents_section(self.STANDARD, "New body")
+        assert "New body" in result
+        assert "Old body" not in result
+        assert "# Test Bug" in result
+        assert "`~/proj`" in result
+        assert "Done when fixed" in result
+        # No duplicated headers.
+        assert result.count("## Working directory") == 1
+        assert result.count("## Contents") == 1
+        assert result.count("## Acceptance criteria") == 1
+
+    def test_preserves_frontmatter(self):
+        content = "---\ngithub_issue: 42\n---\n" + self.STANDARD
+        result = replace_contents_section(content, "New body")
+        assert result.startswith("---\n")
+        assert "github_issue: 42" in result
+        assert "New body" in result
+
+    def test_multiline_body(self):
+        result = replace_contents_section(self.STANDARD, "line one\n\nline two")
+        assert "line one" in result
+        assert "line two" in result
+        assert "Done when fixed" in result
+        assert result.count("## Acceptance criteria") == 1
+
+    def test_no_contents_heading_preserves_frontmatter(self):
+        content = "---\ngithub_issue: 7\n---\nJust freeform notes\n"
+        result = replace_contents_section(content, "Replaced")
+        assert "github_issue: 7" in result
+        assert "Replaced" in result
+        assert "Just freeform notes" not in result
+
+    def test_contents_is_last_section(self):
+        content = "# Bug\n\n## Working directory\n\n`~/p`\n\n## Contents\n\nOld\n"
+        result = replace_contents_section(content, "New")
+        assert "New" in result
+        assert "Old" not in result
+        assert result.endswith("\n")
+
+    def test_fenced_contents_heading_not_treated_as_break(self):
+        """A ``## Contents`` inside a code fence is body, not a section break."""
+        content = (
+            "# Bug\n\n## Contents\n\n"
+            "```\n## Acceptance criteria\n```\n\n"
+            "## Acceptance criteria\n\nReal criteria\n"
+        )
+        result = replace_contents_section(content, "New body")
+        assert "New body" in result
+        # The real acceptance criteria section survives untouched.
+        assert "Real criteria" in result
+        # The fenced example block was part of Contents and got replaced.
+        assert "```" not in result
+
+    def test_body_with_own_h2_is_injected_verbatim(self):
+        """Documented contract: `-c` is the Contents BODY, not a full document.
+
+        Passing a body that itself contains a known h2 (e.g. a literal
+        ``## Acceptance criteria``) injects it verbatim — it is NOT re-parsed
+        into sections — which yields a second heading. This pins the documented
+        "pass only the Contents body" behavior so it can't change silently.
+        """
+        body = "Some notes\n\n## Acceptance criteria\n\nInjected criteria"
+        result = replace_contents_section(self.STANDARD, body)
+        # The injected text lands in the Contents section verbatim...
+        assert "Injected criteria" in result
+        # ...producing a duplicate heading (template's + the injected one).
+        assert result.count("## Acceptance criteria") == 2
 
 
 class TestDeleteDocument:

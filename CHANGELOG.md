@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-06-16
+
+### Fixed
+- `cfs <category> edit -c/--content` (bugs/15, #54) no longer overwrites the whole file with the raw string. It now replaces only the `## Contents` section body, preserving YAML frontmatter (including `github_issue:`), the title, `## Working directory`, and `## Acceptance criteria`. This stops `edit -c` from silently destroying the GitHub-issue linkage and breaking `cfs gh sync`.
+
+### Changed
+- `-c/--content` is now consistent across `create` and `edit`: in both, it means the **body of the Contents section** (CFS supplies/preserves the surrounding structure). `--help` text and the README document this.
+
 ## [0.13.0] - 2026-06-12
 
 ### Added
