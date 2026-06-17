@@ -334,7 +334,7 @@ class TestEditCommand:
             assert "not found" in result.stdout
 
     def test_edit_document_with_content_flag(self, runner, tmp_path):
-        """Test non-interactive document editing with --content flag."""
+        """`edit -c` replaces the Contents body while preserving structure."""
         with isolated_filesystem(tmp_path):
             from pathlib import Path
 
@@ -342,7 +342,12 @@ class TestEditCommand:
             cursor_dir.mkdir()
             (cursor_dir / "bugs").mkdir()
             bug_file = cursor_dir / "bugs" / "1-test-bug.md"
-            bug_file.write_text("Old content")
+            bug_file.write_text(
+                "# Test Bug\n\n"
+                "## Working directory\n\n`~/proj`\n\n"
+                "## Contents\n\nOld body\n\n"
+                "## Acceptance criteria\n\nDone when fixed\n"
+            )
 
             result = runner.invoke(
                 app,
@@ -357,9 +362,100 @@ class TestEditCommand:
             )
 
             assert result.exit_code == 0
-            assert bug_file.read_text() == "New content via non-interactive mode"
+            content = bug_file.read_text()
+            # New body landed in the Contents section.
+            assert "New content via non-interactive mode" in content
+            assert "Old body" not in content
+            # Title and other sections are preserved.
+            assert "# Test Bug" in content
+            assert "## Working directory" in content
+            assert "`~/proj`" in content
+            assert "## Acceptance criteria" in content
+            assert "Done when fixed" in content
             # Should not contain editor selection text
             assert "Select an editor" not in result.stdout
+
+    def test_edit_document_with_content_flag_preserves_frontmatter(self, runner, tmp_path):
+        """`edit -c` must not drop YAML frontmatter (e.g. github_issue:)."""
+        with isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+            bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+            bug_file.write_text(
+                "---\ngithub_issue: 42\n---\n"
+                "# Test Bug\n\n"
+                "## Working directory\n\n`~/proj`\n\n"
+                "## Contents\n\nOld body\n\n"
+                "## Acceptance criteria\n\n"
+            )
+
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "edit", "1", "--content", "Fresh body"],
+            )
+
+            assert result.exit_code == 0
+            content = bug_file.read_text()
+            assert "github_issue: 42" in content
+            assert content.startswith("---\n")
+            assert "Fresh body" in content
+            assert "Old body" not in content
+            assert "# Test Bug" in content
+
+    def test_create_then_edit_content_round_trip(self, runner, tmp_path):
+        """create -c then edit -c yields a single consistent structure."""
+        with isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+
+            create_result = runner.invoke(
+                app,
+                ["instructions", "bugs", "create", "-t", "Round Trip", "-c", "First body"],
+            )
+            assert create_result.exit_code == 0
+            bug_file = cursor_dir / "bugs" / "1-round-trip.md"
+            assert bug_file.exists()
+
+            edit_result = runner.invoke(
+                app,
+                ["instructions", "bugs", "edit", "1", "-c", "Second body"],
+            )
+            assert edit_result.exit_code == 0
+            content = bug_file.read_text()
+            # No duplicated section headers.
+            assert content.count("## Working directory") == 1
+            assert content.count("## Contents") == 1
+            assert content.count("## Acceptance criteria") == 1
+            assert "Second body" in content
+            assert "First body" not in content
+
+    def test_edit_document_with_content_flag_no_contents_heading(self, runner, tmp_path):
+        """Freeform doc without a Contents heading still keeps frontmatter."""
+        with isolated_filesystem(tmp_path):
+            from pathlib import Path
+
+            cursor_dir = Path.cwd() / ".cursor"
+            cursor_dir.mkdir()
+            (cursor_dir / "bugs").mkdir()
+            bug_file = cursor_dir / "bugs" / "1-test-bug.md"
+            bug_file.write_text("---\ngithub_issue: 7\n---\nJust some freeform notes\n")
+
+            result = runner.invoke(
+                app,
+                ["instructions", "bugs", "edit", "1", "--content", "Replaced body"],
+            )
+
+            assert result.exit_code == 0
+            content = bug_file.read_text()
+            assert "github_issue: 7" in content
+            assert "Replaced body" in content
+            assert "Just some freeform notes" not in content
 
     def test_edit_document_with_content_flag_not_found(self, runner, temp_cfs):
         """Test non-interactive edit of non-existent document."""

@@ -238,7 +238,12 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                     None,
                     "--content",
                     "-c",
-                    help="Document content (bypasses editor for non-interactive use)",
+                    help=(
+                        "Body of the Contents section (bypasses editor for "
+                        "non-interactive use). The title, Working directory, and "
+                        "Acceptance criteria sections are generated for you, so pass "
+                        "only the Contents body — not a full structured document."
+                    ),
                 ),
             ) -> None:
                 """Create a new document in this category."""
@@ -377,7 +382,12 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                     None,
                     "--content",
                     "-c",
-                    help="New document content (bypasses editor for non-interactive use)",
+                    help=(
+                        "New body for the Contents section (bypasses editor for "
+                        "non-interactive use). Frontmatter, title, Working directory, "
+                        "and Acceptance criteria are preserved; only the Contents body "
+                        "is replaced."
+                    ),
                 ),
             ) -> None:
                 """Edit an existing document in this category."""
@@ -416,9 +426,16 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                     raise typer.Abort()
 
                 if content_body is not None:
-                    # Non-interactive mode: use provided content directly
+                    # Non-interactive mode: replace only the Contents-section body,
+                    # preserving frontmatter (e.g. github_issue:), title, and the
+                    # other sections.
+                    updated_content = documents.replace_contents_section(
+                        current_content, content_body
+                    )
                     try:
-                        doc_path = documents.edit_document(category_path, parsed_id, content_body)
+                        doc_path = documents.edit_document(
+                            category_path, parsed_id, updated_content
+                        )
                         console.print(
                             f"[green]✓ Updated document: {doc_path}[/green]",
                         )

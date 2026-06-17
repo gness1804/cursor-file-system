@@ -1408,6 +1408,70 @@ def extract_document_sections(content: str) -> Dict[str, str]:
     return sections
 
 
+def replace_contents_section(content: str, new_body: str) -> str:
+    """Replace only the body of the ``## Contents`` section.
+
+    Preserves YAML frontmatter (including ``github_issue:``), the title, the
+    ``## Working directory`` section, the ``## Acceptance criteria`` section,
+    and any other content outside of ``## Contents``. Heading detection is
+    code-fence-aware and uses the same section-break rules as
+    ``extract_document_sections`` (the Contents section runs until the next
+    *known* h2 heading).
+
+    If the document has no ``## Contents`` heading, frontmatter is preserved
+    and the body is replaced wholesale — frontmatter is never silently dropped.
+
+    Args:
+        content: Full existing document content (may include frontmatter).
+        new_body: New text for the Contents section body.
+
+    Returns:
+        Updated document content as a string.
+    """
+    frontmatter, body = parse_frontmatter(content)
+    lines = body.split("\n")
+    fence = CodeFenceTracker()
+
+    contents_heading_idx: Optional[int] = None
+    section_end_idx = len(lines)
+
+    for i, line in enumerate(lines):
+        # Lines inside fenced code blocks are content, never headers.
+        if fence.process(line):
+            continue
+
+        if contents_heading_idx is None:
+            if line.startswith("## ") and line[3:].strip().lower() == "contents":
+                contents_heading_idx = i
+            continue
+
+        # Past the Contents heading: the section ends at the next known h2.
+        if line.startswith("## "):
+            header = line[3:].strip().lower()
+            if (
+                (("working" in header) and ("directory" in header))
+                or header == "contents"
+                or (("acceptance" in header) and ("criteria" in header))
+            ):
+                section_end_idx = i
+                break
+
+    if contents_heading_idx is None:
+        # No Contents section to target: preserve frontmatter, replace body.
+        new_content = new_body
+    else:
+        before = lines[: contents_heading_idx + 1]  # through "## Contents"
+        after = lines[section_end_idx:]
+        rebuilt = before + ["", new_body, ""] + after
+        new_content = "\n".join(rebuilt)
+
+    # Normalize to a single trailing newline.
+    new_content = new_content.rstrip("\n") + "\n"
+
+    # Re-emit frontmatter (no-op when the original had none).
+    return add_frontmatter(new_content, frontmatter)
+
+
 def move_document(
     source_category_path: Path,
     dest_category_path: Path,
