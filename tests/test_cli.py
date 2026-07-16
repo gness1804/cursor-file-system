@@ -2332,3 +2332,76 @@ class TestGhSyncStrict:
         results = {"errors": 2, "needs_interactive": 1}
         result = self._invoke_sync(runner, tmp_path, results, [])
         assert result.exit_code == 0
+
+
+class TestGhSyncStrategy:
+    """Tests for the gh sync --strategy / --non-interactive flags."""
+
+    def _invoke_sync(self, runner, tmp_path, args):
+        """Invoke `gh sync` with a mocked execute_sync_plan; returns (result, mock)."""
+        from cfs.sync import ConflictStrategy
+
+        cfs_root = tmp_path / ".cursor"
+        cfs_root.mkdir(exist_ok=True)
+
+        mock_plan = MagicMock()
+        mock_plan.has_actions.return_value = True
+        mock_execute = MagicMock(return_value={"errors": 0, "needs_interactive": 0, "deferred": 0})
+
+        patches = [
+            patch("cfs.github.check_gh_installed", return_value=True),
+            patch("cfs.github.check_gh_authenticated", return_value=True),
+            patch("cfs.github.list_issues", return_value=[]),
+            patch("cfs.cli_github_commands.core.find_cfs_root", return_value=cfs_root),
+            patch("cfs.cli_github_commands.core.get_all_categories", return_value={"bugs"}),
+            patch("cfs.sync.compute_sync_categories", return_value={"bugs"}),
+            patch("cfs.sync.build_sync_plan", return_value=mock_plan),
+            patch("cfs.sync.display_sync_status"),
+            patch("cfs.sync.display_sync_results"),
+            patch("cfs.sync.execute_sync_plan", mock_execute),
+        ]
+        with ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            result = runner.invoke(app, ["gh", "sync", *args])
+        return result, mock_execute, ConflictStrategy
+
+    def test_default_is_interactive(self, runner, tmp_path):
+        result, mock_execute, Strategy = self._invoke_sync(runner, tmp_path, [])
+        assert result.exit_code == 0
+        assert mock_execute.call_args.kwargs["strategy"] == Strategy.INTERACTIVE
+
+    def test_non_interactive_implies_newer(self, runner, tmp_path):
+        result, mock_execute, Strategy = self._invoke_sync(runner, tmp_path, ["--non-interactive"])
+        assert result.exit_code == 0
+        assert mock_execute.call_args.kwargs["strategy"] == Strategy.NEWER
+
+    def test_explicit_strategy_wins_over_non_interactive(self, runner, tmp_path):
+        result, mock_execute, Strategy = self._invoke_sync(
+            runner, tmp_path, ["--non-interactive", "--strategy", "remote"]
+        )
+        assert result.exit_code == 0
+        assert mock_execute.call_args.kwargs["strategy"] == Strategy.REMOTE
+
+    def test_explicit_strategy_local(self, runner, tmp_path):
+        result, mock_execute, Strategy = self._invoke_sync(
+            runner, tmp_path, ["--strategy", "local"]
+        )
+        assert result.exit_code == 0
+        assert mock_execute.call_args.kwargs["strategy"] == Strategy.LOCAL
+
+    def test_invalid_strategy_exits_1(self, runner, tmp_path):
+        result, mock_execute, _ = self._invoke_sync(runner, tmp_path, ["--strategy", "bogus"])
+        assert result.exit_code == 1
+        assert "Invalid conflict strategy" in result.output
+        mock_execute.assert_not_called()
+
+    def test_explicit_interactive_is_rejected(self, runner, tmp_path):
+        # 'interactive' is an internal state, not a user-choosable value; passing
+        # it explicitly must error rather than silently defeat non-interactive.
+        result, mock_execute, _ = self._invoke_sync(
+            runner, tmp_path, ["--non-interactive", "--strategy", "interactive"]
+        )
+        assert result.exit_code == 1
+        assert "Invalid conflict strategy" in result.output
+        mock_execute.assert_not_called()
