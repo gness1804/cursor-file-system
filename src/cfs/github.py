@@ -101,8 +101,37 @@ def check_gh_installed() -> bool:
         return False
 
 
+def _gh_api_reachable() -> bool:
+    """Return True if gh can make an authenticated GitHub GraphQL API call.
+
+    Probes the same API surface sync actually uses (GraphQL) rather than trusting
+    ``gh auth status``. Requires a well-formed JSON response containing a viewer
+    login, so a proxy/HTML interstitial or an error payload does not count as
+    authenticated.
+    """
+    result = _run_gh_command(
+        ["api", "graphql", "-f", "query=query { viewer { login } }"],
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    try:
+        data = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    login = data.get("data", {}).get("viewer", {}).get("login")
+    return bool(login)
+
+
 def check_gh_authenticated() -> bool:
-    """Check if gh CLI is authenticated.
+    """Check whether gh can make authenticated GitHub API calls.
+
+    ``gh auth status`` is used as a fast positive signal, but it can report a
+    false negative (e.g. a stale/invalid keyring entry, or a token-verification
+    request that receives an unexpected non-JSON response) even when gh can
+    successfully make the GraphQL API calls that sync relies on. When
+    ``gh auth status`` fails, we fall back to a real API probe against the
+    surface sync actually uses before declaring the user unauthenticated.
 
     Returns:
         True if authenticated, False otherwise.
@@ -110,8 +139,9 @@ def check_gh_authenticated() -> bool:
     Raises:
         GitHubCLINotFoundError: If gh CLI is not installed.
     """
-    result = _run_gh_command(["auth", "status"], check=False)
-    return result.returncode == 0
+    if _run_gh_command(["auth", "status"], check=False).returncode == 0:
+        return True
+    return _gh_api_reachable()
 
 
 def get_repo_info() -> Optional[tuple]:
