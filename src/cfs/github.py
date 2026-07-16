@@ -40,6 +40,7 @@ class GitHubIssue:
     state: str  # "open" or "closed"
     labels: List[str]
     url: str
+    updated_at: str = ""  # ISO-8601 timestamp of last update ("" if unknown)
 
     @classmethod
     def from_dict(cls, data: dict) -> "GitHubIssue":
@@ -51,6 +52,7 @@ class GitHubIssue:
             state=data.get("state", "open"),
             labels=[label.get("name", "") for label in data.get("labels", [])],
             url=data.get("url") or data.get("html_url", ""),
+            updated_at=data.get("updatedAt") or data.get("updated_at") or "",
         )
 
 
@@ -171,7 +173,7 @@ def list_issues(
         "--limit",
         str(limit),
         "--json",
-        "number,title,body,state,labels,url",
+        "number,title,body,state,labels,url,updatedAt",
     ]
 
     if labels:
@@ -210,7 +212,7 @@ def get_issue(issue_number: int) -> GitHubIssue:
             "view",
             str(issue_number),
             "--json",
-            "number,title,body,state,labels,url",
+            "number,title,body,state,labels,url,updatedAt",
         ]
     )
 

@@ -497,13 +497,31 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 
 Bidirectional sync between CFS documents and GitHub issues:
 
-- `cfs gh sync [--dry-run] [--strict] [--include-category CAT] [--exclude-category CAT]` - Sync CFS documents with GitHub issues
+- `cfs gh sync [--dry-run] [--strict] [--non-interactive] [--strategy STRATEGY] [--include-category CAT] [--exclude-category CAT]` - Sync CFS documents with GitHub issues
 - `cfs gh status [--include-category CAT] [--exclude-category CAT]` - Show sync status
 - `cfs gh link <category> <id> <issue_number>` - Manually link a CFS document to a GitHub issue
 - `cfs gh unlink <category> <id>` - Remove GitHub issue link from a CFS document
 - `cfs gh purge-excluded [--dry-run] [--include-category CAT] [--exclude-category CAT]` - Delete GitHub issues for excluded categories and unlink CFS documents
 
-**Strict mode for hooks and CI:** `cfs gh sync --strict` exits with code 1 when real sync errors occur (GitHub API failures, file-operation errors), so a `set -e` pre-commit hook or CI step stops instead of silently passing. Items that just need a human — content conflicts or new issues without a category — never fail the command, even in strict mode; they are reported as `Needs Interactive` with a closing summary telling you to run `cfs gh sync` in a terminal.
+**Non-interactive conflict resolution (hooks, CI, agents):** By default, when a linked CFS document and its GitHub issue have different content (title or body) and both are still open, `cfs gh sync` asks you to arbitrate at a prompt. In a non-TTY context (pre-commit hook, CI job, or agent) there is no one to answer, so those items are reported as `Needs Interactive` and deferred. To resolve conflicts deterministically instead, pass a strategy:
+
+- `cfs gh sync --non-interactive` (alias `-y`) — never prompt; implies `--strategy newer`.
+- `cfs gh sync --strategy <local|remote|newer|skip>`:
+  - `local` — the CFS document always wins; its content is pushed to GitHub.
+  - `remote` — the GitHub issue always wins; its content is pulled into CFS.
+  - `newer` — whichever side changed more recently wins (CFS file mtime vs. the issue's `updatedAt`; falls back to the CFS side if a timestamp is unavailable). **Recommended default.** Note: on a fresh CI checkout every file shares the checkout-time mtime, so `newer` will tend to favor CFS there; use `--strategy remote` or `local` explicitly if you need a specific side to win in CI.
+  - `skip` — leave conflicts untouched and report them as *deferred* (advisory only — the sync still completes cleanly).
+
+A conflict is reported when a linked document and its GitHub issue have differing content (title or body) while both are still open — the sync compares the two current versions, not a stored baseline, so it flags the divergence without knowing which side changed. Routine `create`, `complete`, and `close` operations on CFS-managed documents are status/creation actions rather than content edits, so they reconcile automatically and never prompt. When an interactive prompt does appear, it names *what* diverged (title, body, or both) so you know why a decision is needed.
+
+**Guardrails on non-interactive resolution** (because a strategy can overwrite a file no human is reviewing):
+
+- **Prompt-injection tripwire.** Before a strategy pulls a GitHub issue's content into a local CFS document (which AI agents later read and trust), the incoming title/body is scanned for common prompt-injection signatures — override phrases like "ignore previous instructions", role-reassignment, system-prompt/secret exfiltration attempts, fake chat-role tags, and hidden/bidirectional control characters. Anything that trips the tripwire is **not** auto-applied; it's *deferred* with a warning naming the signatures, so a human reviews the diff via an interactive `cfs gh sync`. (Heuristic only — the interactive diff review is the real safeguard.)
+- **Recoverable overwrites.** Whenever a non-interactive resolution overwrites a local document, the prior content is first saved to a sibling `<file>.orig` (gitignored) so an unwanted auto-resolution is always recoverable.
+
+**Strict mode for hooks and CI:** `cfs gh sync --strict` exits with code 1 when real sync errors occur (GitHub API failures, file-operation errors), so a `set -e` pre-commit hook or CI step stops instead of silently passing. Items that just need a human — content conflicts or new issues without a category — never fail the command, even in strict mode. Combine `--strict` with `--non-interactive` for a hook that resolves conflicts deterministically and only fails on genuine errors.
+
+**Recommended pre-commit invocation:** use `cfs gh sync --non-interactive` in git hooks so a routine commit never turns into a "go resolve something in a terminal" chore. Conflicts auto-resolve by recency; anything that genuinely can't be resolved (e.g. a new issue with no category label) is deferred with an advisory note rather than blocking the commit.
 
 **Category exclusion:** By default, the `tmp` and `security` categories are excluded from GitHub sync. The `security` category is excluded to prevent potential vulnerability details from being exposed in public GitHub issues.
 

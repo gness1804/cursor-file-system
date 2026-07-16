@@ -39,6 +39,26 @@ def gh_sync(
             "Items that merely need interactive resolution do not fail."
         ),
     ),
+    strategy: Optional[str] = typer.Option(
+        None,
+        "--strategy",
+        "-s",
+        help=(
+            "Resolve content conflicts deterministically without prompting: "
+            "'local' (CFS wins), 'remote' (GitHub wins), 'newer' (most recently "
+            "changed side wins), or 'skip' (leave conflicts untouched). "
+            "Omit for interactive resolution."
+        ),
+    ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        "-y",
+        help=(
+            "Never prompt; resolve conflicts deterministically. Implies "
+            "--strategy=newer unless --strategy is given. For hooks, CI, and agents."
+        ),
+    ),
 ) -> None:
     """Synchronize CFS documents with GitHub issues.
 
@@ -51,6 +71,10 @@ def gh_sync(
     By default, the 'tmp' and 'security' categories are excluded from sync.
     Use --include-category to override default exclusions, or --exclude-category
     to exclude additional categories.
+
+    For non-interactive contexts (pre-commit hooks, CI, agents), pass
+    --non-interactive (default strategy 'newer') or an explicit --strategy so
+    conflicts resolve deterministically instead of stalling on a prompt.
     """
     from cfs.github import (
         GitHubAuthError,
@@ -59,12 +83,24 @@ def gh_sync(
         list_issues,
     )
     from cfs.sync import (
+        ConflictStrategy,
         build_sync_plan,
         compute_sync_categories,
         display_sync_results,
         display_sync_status,
         execute_sync_plan,
     )
+
+    # Resolve the conflict strategy. --non-interactive is a convenience alias
+    # for the default deterministic strategy ('newer').
+    strategy_value = strategy
+    if non_interactive and not strategy_value:
+        strategy_value = "newer"
+    try:
+        conflict_strategy = ConflictStrategy.from_string(strategy_value)
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
 
     # Check prerequisites
     if not check_gh_installed():
@@ -134,8 +170,12 @@ def gh_sync(
     # Execute sync
     if dry_run:
         console.print("\n[yellow]Dry run mode - no changes will be made[/yellow]")
+    if conflict_strategy != ConflictStrategy.INTERACTIVE:
+        console.print(f"[dim]Conflict strategy: {conflict_strategy.value} (non-interactive)[/dim]")
 
-    results = execute_sync_plan(console, cfs_root, plan, dry_run=dry_run)
+    results = execute_sync_plan(
+        console, cfs_root, plan, dry_run=dry_run, strategy=conflict_strategy
+    )
 
     # Display results
     console.print()

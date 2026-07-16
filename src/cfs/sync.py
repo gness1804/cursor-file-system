@@ -1,5 +1,6 @@
 """Sync logic between CFS documents and GitHub issues."""
 
+import datetime
 import difflib
 import re
 from dataclasses import dataclass, field
@@ -89,6 +90,159 @@ class SyncAction(Enum):
     NO_ACTION = "no_action"  # Already in sync
 
 
+class ConflictStrategy(Enum):
+    """Deterministic, non-interactive strategies for resolving content conflicts.
+
+    Used by hooks, CI, and agents so a sync can complete without a human
+    at a TTY.  ``INTERACTIVE`` (the default when no strategy is given) prompts
+    the user, and falls back to flagging the item for later resolution when no
+    usable stdin is available.
+    """
+
+    INTERACTIVE = "interactive"  # Prompt the user (default; needs a TTY)
+    LOCAL = "local"  # CFS (local) wins — push CFS content to GitHub
+    REMOTE = "remote"  # GitHub (remote) wins — pull GitHub content into CFS
+    NEWER = "newer"  # Whichever side changed more recently wins
+    SKIP = "skip"  # Leave conflicts untouched; report them (advisory)
+
+    @classmethod
+    def from_string(cls, value: Optional[str]) -> "ConflictStrategy":
+        """Parse a user-supplied strategy name, defaulting to INTERACTIVE for None/empty.
+
+        ``interactive`` is an internal state, not a user-choosable value: passing
+        it explicitly (e.g. ``--strategy interactive``) is rejected so it can't
+        silently defeat ``--non-interactive`` in a hook/CI wrapper.
+        """
+        if not value:
+            return cls.INTERACTIVE
+        normalized = value.strip().lower()
+        choosable = [s for s in cls if s != cls.INTERACTIVE]
+        for strategy in choosable:
+            if strategy.value == normalized:
+                return strategy
+        valid = ", ".join(s.value for s in choosable)
+        raise ValueError(f"Invalid conflict strategy '{value}'. Valid: {valid}.")
+
+
+# --- Prompt-injection guardrail --------------------------------------------
+# When a non-interactive strategy would overwrite a local CFS document (which
+# AI agents later read and trust) with content pulled from a GitHub issue, we
+# scan that incoming content for common prompt-injection signatures. Anything
+# that trips a signature is NOT auto-applied — it is deferred so a human can
+# review the diff via an interactive sync. This is a heuristic tripwire meant
+# to catch the obvious cases, not a guarantee; interactive resolution (where a
+# human sees the full diff) remains the real safeguard.
+_INJECTION_SIGNATURES: List[Tuple["re.Pattern[str]", str]] = [
+    (
+        re.compile(
+            r"ignore\s+(?:all\s+|any\s+)?(?:the\s+|your\s+|previous\s+)*"
+            r"(?:previous|prior|above|earlier|preceding|foregoing)\s+"
+            r"(?:instructions?|prompts?|messages?|context|directions?)",
+            re.IGNORECASE,
+        ),
+        "'ignore previous instructions' phrase",
+    ),
+    (
+        re.compile(
+            r"disregard\s+(?:all\s+|any\s+)?(?:the\s+|your\s+)?"
+            r"(?:previous|prior|above|earlier|preceding)",
+            re.IGNORECASE,
+        ),
+        "'disregard the above' phrase",
+    ),
+    (
+        re.compile(
+            r"forget\s+(?:all\s+|everything\s+)?(?:the\s+|your\s+)?"
+            r"(?:previous|prior|above|earlier|instructions?)",
+            re.IGNORECASE,
+        ),
+        "'forget previous instructions' phrase",
+    ),
+    (
+        re.compile(r"you\s+are\s+now\s+(?:a\b|an\b|the\b|no\s+longer\b)", re.IGNORECASE),
+        "role-reassignment ('you are now ...')",
+    ),
+    (
+        re.compile(
+            r"(?:reveal|print|show|repeat|output|expose|leak|dump)\s+"
+            r"(?:me\s+)?(?:your\s+|the\s+)?"
+            r"(?:system\s+prompt|system\s+message|instructions|prompt|"
+            r"api[\s_-]?key|secret|token|credentials?)",
+            re.IGNORECASE,
+        ),
+        "system-prompt / secret exfiltration attempt",
+    ),
+    (
+        re.compile(r"\bnew\s+instructions?\s*[:\-]", re.IGNORECASE),
+        "'new instructions:' directive",
+    ),
+    (
+        re.compile(r"</?\s*(?:system|assistant|user)\s*>", re.IGNORECASE),
+        "fake chat/role tag",
+    ),
+    (
+        re.compile(r"\[/?INST\]|<\|im_(?:start|end)\|>|<<SYS>>", re.IGNORECASE),
+        "model chat-template control token",
+    ),
+]
+
+# Invisible / bidirectional control characters commonly used to hide injected
+# instructions from a human reviewer while leaving them visible to a model.
+_SUSPICIOUS_UNICODE = re.compile(
+    "["
+    "\u200b-\u200f"  # zero-width space/joiners + LTR/RTL marks
+    "\u202a-\u202e"  # bidi embedding / override
+    "\u2060-\u2064"  # word joiner / invisible math operators
+    "\u2066-\u2069"  # bidi isolates
+    "\ufeff"  # BOM / zero-width no-break space
+    "]"
+)
+
+
+def detect_prompt_injection(text: str) -> List[str]:
+    """Scan untrusted text for common prompt-injection signatures.
+
+    Returns a list of human-readable descriptions of the signatures found
+    (empty if the text looks clean). Heuristic only — favors surfacing the
+    obvious override phrases and hidden control characters.
+    """
+    if not text:
+        return []
+    found: List[str] = []
+    for pattern, label in _INJECTION_SIGNATURES:
+        if pattern.search(text):
+            found.append(label)
+    if _SUSPICIOUS_UNICODE.search(text):
+        found.append("hidden/bidirectional control characters")
+    return found
+
+
+def _incoming_github_text(item: "SyncItem") -> str:
+    """Concatenate the GitHub-side title and body for injection scanning."""
+    title = item.github_issue.title if item.github_issue else ""
+    return f"{title or ''}\n{item.github_content or ''}"
+
+
+def _parse_github_timestamp(value: str) -> Optional[float]:
+    """Parse a GitHub ISO-8601 timestamp into a POSIX timestamp (UTC).
+
+    Returns None if the value is missing or unparseable.
+    """
+    if not value:
+        return None
+    text = value.strip()
+    # Python 3.8's fromisoformat does not accept a trailing 'Z'.
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.timestamp()
+
+
 @dataclass
 class SyncItem:
     """Represents a single item to be synced."""
@@ -101,6 +255,21 @@ class SyncItem:
     cfs_content: Optional[str] = None
     github_content: Optional[str] = None
     title: str = ""
+    # For CONTENT_CONFLICT: which fields diverged, so we can tell the user
+    # *what* needs a decision rather than just "something differs".
+    title_differs: bool = False
+    body_differs: bool = False
+
+    def conflict_reason(self) -> str:
+        """Human-readable summary of what diverged for a content conflict."""
+        parts = []
+        if self.title_differs:
+            parts.append("title")
+        if self.body_differs:
+            parts.append("body")
+        if not parts:
+            return "content"
+        return " and ".join(parts)
 
     def __str__(self) -> str:
         if self.action == SyncAction.CREATE_CFS:
@@ -449,6 +618,8 @@ def build_sync_plan(
                             cfs_content=cfs_content,
                             github_content=github_issue.body,
                             title=cfs_title or github_issue.title,
+                            title_differs=title_differs,
+                            body_differs=body_differs,
                         )
                     )
             except (OSError, IOError):
@@ -633,9 +804,13 @@ def prompt_conflict_resolution(
     Returns:
         "local" to use CFS, "remote" to use GitHub, "skip" to skip, or None to abort.
     """
-    console.print(f"\n[yellow]Content conflict:[/yellow] {item.title}")
+    console.print(f"\n[yellow]Content conflict ({item.conflict_reason()}):[/yellow] {item.title}")
     console.print(f"  CFS: {item.category}/{item.cfs_doc_id}")
     console.print(f"  GitHub: #{item.github_issue.number}")
+    console.print(
+        "  [dim]The document and the GitHub issue have different content — "
+        "pick which one wins.[/dim]"
+    )
 
     # Build comparable content
     cfs_body, github_body = _get_comparable_bodies(
@@ -673,6 +848,48 @@ def prompt_conflict_resolution(
         console.print("[red]Invalid choice. Please try again.[/red]")
 
 
+def _resolve_conflict_noninteractive(
+    item: SyncItem,
+    strategy: ConflictStrategy,
+) -> Tuple[Optional[str], str]:
+    """Deterministically pick a winner for a content conflict.
+
+    Args:
+        item: The CONTENT_CONFLICT sync item.
+        strategy: A non-interactive strategy (LOCAL/REMOTE/NEWER/SKIP).
+
+    Returns:
+        A tuple of (resolution, explanation) where resolution is "local",
+        "remote", or None (meaning skip/defer). The explanation describes why
+        that side was chosen, for logging.
+    """
+    if strategy == ConflictStrategy.LOCAL:
+        return "local", "strategy=local (CFS wins)"
+    if strategy == ConflictStrategy.REMOTE:
+        return "remote", "strategy=remote (GitHub wins)"
+    if strategy == ConflictStrategy.SKIP:
+        return None, "strategy=skip"
+
+    # NEWER: compare the CFS file mtime with the GitHub issue's updated_at.
+    github_ts = _parse_github_timestamp(item.github_issue.updated_at) if item.github_issue else None
+    cfs_ts: Optional[float] = None
+    if item.cfs_doc_path is not None:
+        try:
+            cfs_ts = item.cfs_doc_path.stat().st_mtime
+        except OSError:
+            cfs_ts = None
+
+    if cfs_ts is not None and github_ts is not None:
+        if cfs_ts >= github_ts:
+            return "local", "strategy=newer (CFS modified more recently)"
+        return "remote", "strategy=newer (GitHub updated more recently)"
+
+    # Timestamps unavailable — fall back to CFS (the side the user is most
+    # likely actively editing, e.g. during a pre-commit hook). Least surprising
+    # for a routine commit, and never silently discards the user's local work.
+    return "local", "strategy=newer (timestamps unavailable; defaulting to CFS)"
+
+
 def _warn_prompt_eof(console: Console, title: str) -> None:
     """Warn that a prompt ran without usable stdin — a human must rerun it."""
     console.print(
@@ -686,6 +903,7 @@ def execute_sync_plan(
     cfs_root: Path,
     plan: SyncPlan,
     dry_run: bool = False,
+    strategy: ConflictStrategy = ConflictStrategy.INTERACTIVE,
 ) -> Dict[str, int]:
     """Execute a sync plan.
 
@@ -694,6 +912,9 @@ def execute_sync_plan(
         cfs_root: Path to the .cursor directory.
         plan: SyncPlan to execute.
         dry_run: If True, only show what would be done.
+        strategy: How to resolve content conflicts. ``INTERACTIVE`` (default)
+            prompts the user; ``LOCAL``/``REMOTE``/``NEWER``/``SKIP`` resolve
+            deterministically without a TTY, for hooks/CI/agents.
 
     Returns:
         Dictionary with counts of actions taken.
@@ -706,6 +927,7 @@ def execute_sync_plan(
         "reopened_cfs": 0,
         "resolved_conflicts": 0,
         "skipped": 0,
+        "deferred": 0,
         "needs_interactive": 0,
         "errors": 0,
     }
@@ -727,6 +949,19 @@ def execute_sync_plan(
                             f"[dim]Would create CFS doc (category TBD) "
                             f"from GitHub #{item.github_issue.number}[/dim]"
                         )
+                        continue
+                    elif strategy != ConflictStrategy.INTERACTIVE:
+                        # A category can't be inferred from labels and there is
+                        # no deterministic rule to pick one. Defer it (advisory)
+                        # rather than blocking a non-interactive sync — the user
+                        # can label the issue or run an interactive sync later.
+                        console.print(
+                            f"[dim]Deferred: GitHub #{item.github_issue.number} "
+                            f"('{item.title}') has no CFS category label; skipping "
+                            "creation. Add a cfs:<category> label or run "
+                            "'cfs gh sync' interactively to file it.[/dim]"
+                        )
+                        results["deferred"] += 1
                         continue
                     elif not console.is_interactive:
                         # Don't prompt without a TTY — input() would crash with
@@ -804,12 +1039,60 @@ def execute_sync_plan(
                     results["reopened_cfs"] += 1
 
             elif item.action == SyncAction.CONTENT_CONFLICT:
+                reason = item.conflict_reason()
+
+                # Deterministic (non-interactive) resolution path for
+                # hooks/CI/agents.
+                if strategy != ConflictStrategy.INTERACTIVE:
+                    resolution, why = _resolve_conflict_noninteractive(item, strategy)
+                    if resolution is None:
+                        console.print(
+                            f"[dim]Deferred conflict ({reason}) for '{item.title}' "
+                            f"({item.category}/{item.cfs_doc_id} vs GitHub "
+                            f"#{item.github_issue.number}) — {why}.[/dim]"
+                        )
+                        results["deferred"] += 1
+                        continue
+
+                    # Guardrail: if we're about to pull GitHub content into a
+                    # local CFS doc (which agents later read and trust), scan
+                    # the incoming content for prompt-injection signatures and
+                    # refuse to auto-apply anything suspicious — defer it for a
+                    # human to review the diff interactively instead.
+                    if resolution == "remote":
+                        signatures = detect_prompt_injection(_incoming_github_text(item))
+                        if signatures:
+                            console.print(
+                                f"[yellow]Deferred conflict ({reason}) for "
+                                f"'{item.title}': refusing to auto-import GitHub "
+                                f"#{item.github_issue.number} content — possible prompt "
+                                f"injection ({', '.join(signatures)}). Review it with an "
+                                "interactive 'cfs gh sync'.[/yellow]"
+                            )
+                            results["deferred"] += 1
+                            continue
+
+                    if dry_run:
+                        console.print(
+                            f"[dim]Would resolve conflict ({reason}) for '{item.title}' "
+                            f"using {resolution} — {why}.[/dim]"
+                        )
+                        results["skipped"] += 1
+                    else:
+                        # Back up any local doc we overwrite so an unwanted
+                        # auto-resolution is always recoverable.
+                        _resolve_conflict(console, cfs_root, item, resolution, backup=True)
+                        console.print(f"[dim]Auto-resolved ({reason}) via {why}.[/dim]")
+                        results["resolved_conflicts"] += 1
+                    continue
+
                 if not console.is_interactive:
                     console.print(
-                        f"[yellow]Needs interactive resolution: content conflict for "
+                        f"[yellow]Needs interactive resolution: {reason} conflict for "
                         f"'{item.title}' ({item.category}/{item.cfs_doc_id} vs GitHub "
-                        f"#{item.github_issue.number}). "
-                        "Run 'cfs gh sync' in a terminal to resolve.[/yellow]"
+                        f"#{item.github_issue.number}). Re-run with a strategy "
+                        "(e.g. 'cfs gh sync --non-interactive') or resolve it "
+                        "interactively in a terminal.[/yellow]"
                     )
                     results["needs_interactive"] += 1
                     continue
@@ -955,11 +1238,34 @@ def _create_github_from_cfs(
     return issue
 
 
+def _backup_local_document(console: Console, item: SyncItem) -> None:
+    """Save the current on-disk CFS content to a sibling ``.orig`` file.
+
+    Called before a non-interactive resolution overwrites a local document, so
+    an unwanted auto-resolution is always recoverable. Best-effort: a failed
+    backup warns but does not abort the resolution.
+    """
+    if item.cfs_doc_path is None:
+        return
+    try:
+        backup_path = item.cfs_doc_path.with_name(item.cfs_doc_path.name + ".orig")
+        backup_path.write_text(item.cfs_content or "", encoding="utf-8")
+        console.print(
+            f"[dim]Backed up prior content to {backup_path.name} "
+            "(overwrite is recoverable).[/dim]"
+        )
+    except OSError as e:
+        console.print(
+            f"[yellow]Warning: could not write backup for {item.cfs_doc_path.name}: {e}[/yellow]"
+        )
+
+
 def _resolve_conflict(
     console: Console,
     cfs_root: Path,
     item: SyncItem,
     resolution: str,
+    backup: bool = False,
 ) -> None:
     """Resolve a content conflict.
 
@@ -968,6 +1274,8 @@ def _resolve_conflict(
         cfs_root: Path to the .cursor directory.
         item: SyncItem with conflict details.
         resolution: "local" to use CFS, "remote" to use GitHub.
+        backup: If True, save the local document to a ``.orig`` sibling before
+            overwriting it (only relevant when ``resolution == "remote"``).
     """
     if resolution == "local":
         # Update GitHub with CFS content
@@ -1032,6 +1340,9 @@ def _resolve_conflict(
             content = add_frontmatter(content, existing_fm)
         else:
             content = set_github_issue_number(content, item.github_issue.number)
+
+        if backup:
+            _backup_local_document(console, item)
 
         edit_document(category_path, item.cfs_doc_id, content)
         console.print(
@@ -1099,6 +1410,8 @@ def display_sync_results(console: Console, results: Dict[str, int]) -> None:
                 style = "red"
             elif action == "needs_interactive":
                 style = "yellow"
+            elif action == "deferred":
+                style = "dim"
             else:
                 style = "green"
             table.add_row(action.replace("_", " ").title(), f"[{style}]{count}[/{style}]")
@@ -1108,11 +1421,21 @@ def display_sync_results(console: Console, results: Dict[str, int]) -> None:
     # Closing summary so unresolved items are impossible to miss, especially
     # when the output is captured by a hook or an agent transcript.
     needs_interactive = results.get("needs_interactive", 0)
+    deferred = results.get("deferred", 0)
     errors = results.get("errors", 0)
     if needs_interactive > 0:
         console.print(
             f"[yellow]⚠ {needs_interactive} item(s) need interactive resolution — "
-            "run 'cfs gh sync' in a terminal.[/yellow]"
+            "run 'cfs gh sync' in a terminal, or pass a strategy "
+            "(e.g. --non-interactive) to resolve deterministically.[/yellow]"
+        )
+    if deferred > 0:
+        # Advisory only: deferred items were intentionally left for later by a
+        # non-interactive strategy. This is NOT a call to action and does not
+        # imply anything is wrong — the commit/sync completed cleanly.
+        console.print(
+            f"[dim]{deferred} item(s) deferred (no deterministic resolution) — "
+            "run 'cfs gh sync' when you want to address them.[/dim]"
         )
     if errors > 0:
         console.print(f"[red]❌ {errors} sync error(s) occurred — see messages above.[/red]")

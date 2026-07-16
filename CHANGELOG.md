@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `cfs gh sync --non-interactive` (`-y`) and `cfs gh sync --strategy <local|remote|newer|skip>` (bugs/17, #65): a deterministic, non-interactive path for resolving content conflicts so hooks, CI, and agents can complete a sync without a human at a TTY. `--non-interactive` implies `--strategy newer` (whichever side changed most recently wins). Conflicts intentionally left unresolved (e.g. a new issue with no category label) are now reported as *deferred* (advisory) instead of blocking `Needs Interactive` items.
+- `GitHubIssue` now carries the issue's `updatedAt` timestamp, enabling the `newer` strategy to compare recency against the CFS document's file mtime.
+- **Prompt-injection tripwire** on non-interactive sync: before a strategy imports a GitHub issue's content into a local CFS document, the incoming title/body is scanned for common injection signatures (override phrases, role reassignment, system-prompt/secret exfiltration, fake chat-role tags, hidden/bidi control characters). A hit is *deferred* for interactive review instead of being auto-applied. Exposed as `cfs.sync.detect_prompt_injection`.
+- **Recoverable overwrites**: any non-interactive resolution that overwrites a local document first saves the prior content to a gitignored `<file>.orig` sibling.
+
+### Changed
+- Content-conflict reporting now states *what* diverged (title, body, or both) in both the interactive prompt and non-interactive logs, so it's clear why a decision is needed. Interactive resolution is reserved for genuine divergence (both sides changed since the last sync).
+- The recommended pre-commit hook invocation is now `cfs gh sync --non-interactive --strict`, so a routine commit resolves conflicts by recency and only fails on real sync errors instead of surfacing interactive-resolution prompts. Documented in the README.
+
 ## [0.13.1] - 2026-06-16
 
 ### Fixed

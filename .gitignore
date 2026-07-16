@@ -49,4 +49,8 @@ Thumbs.db
 # Project specific
 *.log
 
+# CFS gh-sync conflict backups (written when a non-interactive resolution
+# overwrites a local document; kept for recovery, not for committing).
+*.orig
+
 .grepai/
