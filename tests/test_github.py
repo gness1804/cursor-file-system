@@ -9,6 +9,7 @@ from cfs.github import (
     GitHubAPIError,
     GitHubCLINotFoundError,
     GitHubIssue,
+    _gh_api_reachable,
     _run_gh_command,
     check_gh_authenticated,
     check_gh_installed,
@@ -150,16 +151,79 @@ class TestCheckGhAuthenticated:
     """Tests for check_gh_authenticated function."""
 
     @patch("cfs.github._run_gh_command")
-    def test_authenticated(self, mock_run):
-        """Test when gh CLI is authenticated."""
+    def test_authenticated_fast_path(self, mock_run):
+        """gh auth status == 0 short-circuits to True without an API probe."""
         mock_run.return_value = MagicMock(returncode=0)
         assert check_gh_authenticated() is True
+        # Only 'gh auth status' should have run — no fallback probe needed.
+        assert mock_run.call_count == 1
 
     @patch("cfs.github._run_gh_command")
     def test_not_authenticated(self, mock_run):
-        """Test when gh CLI is not authenticated."""
-        mock_run.return_value = MagicMock(returncode=1)
+        """Both gh auth status and the API probe fail -> not authenticated."""
+        mock_run.return_value = MagicMock(returncode=1, stdout="")
         assert check_gh_authenticated() is False
+
+    @patch("cfs.github._run_gh_command")
+    def test_auth_status_false_negative_but_api_works(self, mock_run):
+        """gh auth status fails (stale keyring) but the GraphQL probe succeeds.
+
+        This is the reported scenario: `gh auth status` exits non-zero while the
+        token still authenticates against the GraphQL API sync uses.
+        """
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout=""),  # gh auth status
+            MagicMock(  # gh api graphql viewer probe
+                returncode=0,
+                stdout='{"data":{"viewer":{"login":"gness1804"}}}',
+            ),
+        ]
+        assert check_gh_authenticated() is True
+        assert mock_run.call_count == 2
+
+    @patch("cfs.github._run_gh_command")
+    def test_probe_html_response_is_not_authenticated(self, mock_run):
+        """A non-JSON (HTML) probe response must not count as authenticated."""
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout=""),  # gh auth status
+            MagicMock(returncode=0, stdout="<!DOCTYPE html><html>...</html>"),
+        ]
+        assert check_gh_authenticated() is False
+
+    @patch("cfs.github._run_gh_command")
+    def test_probe_json_without_viewer_is_not_authenticated(self, mock_run):
+        """A well-formed error payload (no viewer login) is not authenticated."""
+        mock_run.side_effect = [
+            MagicMock(returncode=1, stdout=""),  # gh auth status
+            MagicMock(returncode=0, stdout='{"errors":[{"message":"Bad credentials"}]}'),
+        ]
+        assert check_gh_authenticated() is False
+
+
+class TestGhApiReachable:
+    """Tests for the _gh_api_reachable GraphQL auth probe."""
+
+    @patch("cfs.github._run_gh_command")
+    def test_valid_viewer(self, mock_run):
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout='{"data":{"viewer":{"login":"octocat"}}}'
+        )
+        assert _gh_api_reachable() is True
+
+    @patch("cfs.github._run_gh_command")
+    def test_nonzero_exit(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=1, stdout="")
+        assert _gh_api_reachable() is False
+
+    @patch("cfs.github._run_gh_command")
+    def test_empty_login(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout='{"data":{"viewer":{"login":""}}}')
+        assert _gh_api_reachable() is False
+
+    @patch("cfs.github._run_gh_command")
+    def test_malformed_json(self, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="not json")
+        assert _gh_api_reachable() is False
 
 
 class TestGetRepoInfo:

@@ -3,7 +3,7 @@
 A CLI for managing Cursor instruction documents within a structured file system.
 """
 
-__version__ = "0.13.2"
+__version__ = "0.13.3"
 
 # Export exceptions for easy access
 from cfs.exceptions import (
