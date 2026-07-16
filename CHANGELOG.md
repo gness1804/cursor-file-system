@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.3] - 2026-07-16
+
 ### Fixed
 - `cfs gh sync` no longer reports "GitHub CLI is not authenticated" when `gh` can actually reach the API. `check_gh_authenticated()` treated a non-zero `gh auth status` exit as unauthenticated, but that command false-negatives on a stale/invalid keyring entry (or a token-verification request that gets a non-JSON response) even while the token still authenticates the GraphQL calls sync uses. It now falls back to a real GraphQL `viewer` probe before declaring the user unauthenticated. The fast path (`gh auth status` == 0) is unchanged.
 
