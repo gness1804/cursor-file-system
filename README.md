@@ -38,6 +38,19 @@ pip install ".[dev]"
 
 After installation, the `cfs` command will be available in your PATH.
 
+## Git hooks
+
+Hooks live in a tracked `.githooks/` directory, but git does not pick them up
+automatically. Run this once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+They block AWS account IDs, ARNs, access keys and private-key headers in staged
+content, in filenames, and in the commit message. Until you run that line, a
+fresh clone commits unprotected.
+
 ## Quick Start
 
 1. **Initialize CFS structure** in your project:
