@@ -85,7 +85,7 @@ import subprocess
 import sys
 import unicodedata
 
-SCANNER_VERSION = "5.4.0"
+SCANNER_VERSION = "5.5.1"
 
 # AWS's own documentation example account IDs — never real.
 EXAMPLE_ACCOUNT_IDS = frozenset(
@@ -337,6 +337,13 @@ RE_TWELVE = re.compile(r"(?<!\d)(\d{12})(?!\d)")
 # honor_allow_marker=False, by design, because a marker in a filename would be a
 # permanent committed exemption. So there is no way to waive it: the only remedy
 # is renaming the file. An unwaivable false positive is the worst kind.
+#
+# A THIRD review, 2026-08-31, reached the same conclusion and recorded it as
+# WON'T-FIX rather than reopening it. If you are the fourth: the two attempts
+# below are the entire argument, and nothing about them has changed. The gap is
+# non-hyphen-separated account IDs; the price of closing it is a rule that fires
+# on `chmod 0644 0755 0700` or on `backup_2026_0812_1530.log`, and the second of
+# those cannot be waived at all because pathnames ignore the allow-marker.
 #
 # A rule that fires on `chmod` output or on a log filename is worse than the gap
 # it closes, because it is the rule that teaches someone to reach for
@@ -803,6 +810,96 @@ MAX_CONTROL_RATIO = 0.05
 # Ceiling on bytes decoded six ways. See _iter_decoded_lines.
 MAX_DECODE_BYTES = 10 * 1024 * 1024
 
+# Container formats whose payload is COMPRESSED. Nothing in this file
+# decompresses anything, so every candidate reading of one of these is a reading
+# of the deflated byte stream — the identifier inside is not obscured, it is
+# simply not present in any view this scanner ever looks at.
+#
+# The failure that motivates this is not theoretical. Deflate output is usually
+# high-entropy enough to fail _is_plausible_text on its own, which is why most
+# archives already reported unscannable — but a MIXED archive does not. Verified
+# 2026-08-31 against 5.4.0: a zip holding one bulky ZIP_STORED member of ASCII
+# prose plus one small ZIP_DEFLATED member containing an account ID scanned rc 0,
+# no finding, no acknowledgement. The stored member's clean ASCII dominates the
+# control-character ratio, so the whole file reads as plausible text, and the
+# deflated member is simply absent from every reading. That is the one outcome
+# this control must never produce — a confident "no findings" on a file it did
+# not read. An opaque blob honestly reported as unscannable is strictly better
+# than a clean bill of health. Same repro now returns rc 1 as unscannable.
+#
+# Matched on MAGIC BYTES, not on the file extension. The extension is whatever
+# the author typed; the magic is what an unzipper will actually act on, and a
+# renamed .docx is still a zip.
+#
+# PK\x03\x04 covers .zip and every OOXML/OpenDocument format built on it
+# (.docx, .xlsx, .pptx, .odt, .ods) plus .jar and .epub. The OLE2 signature
+# covers legacy .doc/.xls/.ppt/.msg, which are not compressed but are equally
+# unparsed here. Uncompressed .tar is deliberately ABSENT: its members are
+# stored as plain bytes, so it scans correctly today and marking it unscannable
+# would cost a real capability for nothing.
+#
+# These are recorded UNSCANNABLE rather than blocked outright, so
+# SCAN_ALLOW_UNSCANNABLE=1 remains the route for "I opened it and looked." A
+# control that made committing any archive impossible would be replaced by
+# --no-verify within a week, and --no-verify disables every check at once.
+# Signatures trusted ANYWHERE in the file, not only at offset 0.
+#
+# Checking only the first bytes was the rule's own bypass, and a cheap one:
+# `cat banner.sh mixed.zip > file` scanned rc 0 clean while `unzip -l` still
+# listed every member. That is not an exotic attack — the zip format is read
+# from its TAIL, which is exactly why self-extracting archives, appended-ZIP
+# payloads and shebang-prefixed .jar files all work, and why a stray `cat` or a
+# concatenated download produces the same shape by accident.
+#
+# Safe to search the whole buffer because every signature here contains a
+# control or high byte, so none of them occurs in ordinary prose. The two that
+# would have — bzip2's printable "BZh" and the 2-byte gzip header — are given
+# their FULL magic instead: bzip2 carries the six-byte "1AY&SY" block header
+# after the level digit, and gzip's method byte 0x08 (deflate) is the
+# only one anything emits. A 2-byte "\x1f\x8b" alone is too weak to hunt for.
+ARCHIVE_MAGIC_EMBEDDED = (
+    b"PK\x03\x04",                        # zip, docx/xlsx/pptx, odt, jar, epub
+    b"PK\x05\x06",                        # zip end-of-central-directory
+    b"PK\x07\x08",                        # spanned zip
+    b"\x1f\x8b\x08",                       # gzip (deflate), .tgz
+    *(b"BZh" + bytes([d]) + b"\x31\x41\x59\x26\x53\x59"
+      for d in range(ord("1"), ord("9") + 1)),          # bzip2, levels 1-9
+    b"\xfd7zXZ\x00",                       # xz
+    b"7z\xbc\xaf\x27\x1c",                 # 7-zip
+    b"Rar!\x1a\x07",                       # rar
+    b"\x04\x22\x4d\x18",                   # lz4 frame
+    b"\x28\xb5\x2f\xfd",                   # zstd
+    b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",       # OLE2: legacy .doc/.xls/.ppt/.msg
+    b"SQLite format 3\x00",                # sqlite database
+)
+
+# Signatures that are printable ASCII, and therefore believed ONLY at offset 0.
+# Hunting for these anywhere would fire on any document that merely QUOTES them
+# — a README explaining that PDFs begin "%PDF-" is not a PDF — and a rule that
+# blocks prose about the rule is how this control gets bypassed wholesale.
+ARCHIVE_MAGIC_PREFIX_ONLY = (
+    b"%PDF-",                              # pdf
+    b"!<arch>\n",                          # ar: .deb, static libraries
+    b"xar!",                               # xar: .pkg installers
+    b"MSCF",                               # cab
+)
+
+# PDF deserves its own note, because it is the likeliest of all of these to
+# carry a real leak and it was MISSED by the first version of this rule. A PDF
+# is a mixed container in exactly the sense that defeated the plausibility test:
+# ASCII object structure surrounding /FlateDecode content streams. Verified
+# against 5.5.0 — a 6 KB PDF whose only account ID lived inside a compressed
+# stream returned rc 0, no finding, no acknowledgement. Signed contracts,
+# invoices and console exports are all PDFs, and one of those is already on this
+# machine's incident list.
+
+
+def _is_archive(data: bytes) -> bool:
+    """True if these bytes are, or contain, a known container format."""
+    if data.startswith(ARCHIVE_MAGIC_PREFIX_ONLY):
+        return True
+    return any(sig in data for sig in ARCHIVE_MAGIC_EMBEDDED)
+
 # Control characters that DO occur in ordinary text.
 TEXT_CONTROLS = frozenset("\t\n\r\f\v")
 
@@ -951,7 +1048,14 @@ def _iter_decoded_lines(path: str, data: bytes, unscannable: list[str]):
         return
 
     candidates = _decode_candidates(data)
-    if not any(_is_plausible_text(text, kind) for text, kind in candidates):
+    # An archive is unscannable BY CONSTRUCTION, whatever the plausibility test
+    # says about its compressed bytes — see ARCHIVE_MAGIC. It is still scanned
+    # below, for the same reason every other unscannable file is: a STORED (that
+    # is, uncompressed) zip member leaves its text in the clear, and a real
+    # finding beats the weaker "go and review this yourself".
+    if _is_archive(data) or not any(
+        _is_plausible_text(text, kind) for text, kind in candidates
+    ):
         unscannable.append(path)
     for text, _kind in candidates:
         for n, line in enumerate(split_lines(text), 1):
@@ -1467,7 +1571,7 @@ BLOCK_HEADER = {
 }
 
 
-def _report_hits(hits) -> None:
+def _report_hits(hits, allow_marker_usable: bool = True) -> None:
     e = sys.stderr
     print("", file=e)
     for location, rule in hits:
@@ -1481,8 +1585,16 @@ def _report_hits(hits) -> None:
     print("  CFS docs sync into GitHub issues, which are exactly as public as the", file=e)
     print("  repo. Check with: gh repo view --json visibility", file=e)
     print("", file=e)
-    print("  If a line is genuinely fine — a real UUID whose tail is 12 digits, or a", file=e)
-    print(f"  non-AWS 12-digit number — append '{ALLOW_MARKER}' to that line.", file=e)
+    if allow_marker_usable:
+        print("  If a line is genuinely fine — a real UUID whose tail is 12 digits, or a", file=e)
+        print(f"  non-AWS 12-digit number — append '{ALLOW_MARKER}' to that line.", file=e)
+    else:
+        # Saying "append the marker" here would be advice that does not work, and
+        # worse, advice whose only effect is to put the marker NEXT TO the
+        # identifier in the published text. Name the real remedy instead.
+        print(f"  '{ALLOW_MARKER}' does NOT apply here (--no-allow-marker): this text is", file=e)
+        print("  itself the published artifact, so a marker would ship alongside the", file=e)
+        print("  identifier rather than excusing it. Edit the text.", file=e)
     print("  A hit marked (pathname) is in the FILE NAME; rename the file instead.", file=e)
     print("  Do not blanket-bypass with --no-verify.", file=e)
 
@@ -1530,6 +1642,17 @@ def main() -> int:
                       help="Scan text piped on stdin (e.g. a commit message).")
     ap.add_argument("--label", default="<stdin>", metavar="NAME",
                     help="Name to report for --stdin hits (default: <stdin>).")
+    # The allow-marker is a per-line escape hatch a human types beside one
+    # specific false positive in a FILE, where the marker is a note to the next
+    # reader and the file can be edited afterwards. Neither holds for a commit
+    # message: it is pushed verbatim, cannot be corrected without rewriting
+    # history, and the marker would be published in the same breath as the
+    # identifier it excused. `git commit -m "... 9876...  allow-identifier"`
+    # therefore committed clean — the escape hatch disarming the control in the
+    # one sink that has no undo. Same shape as the pathname case, which is why
+    # honor_allow_marker already existed; this exposes it to callers.
+    ap.add_argument("--no-allow-marker", action="store_true",
+                    help="Ignore the per-line allow-identifier marker entirely.")
     ap.add_argument("--version", action="store_true",
                     help="Print scanner version and exit.")
     args = ap.parse_args()
@@ -1573,7 +1696,8 @@ def main() -> int:
     hits: list[tuple[str, str]] = []
     seen_hits: set[tuple[str, str]] = set()
     for path, lineno, content, is_pathname in source:
-        rule = scan_line(content, honor_allow_marker=not is_pathname)
+        honor = not is_pathname and not args.no_allow_marker
+        rule = scan_line(content, honor_allow_marker=honor)
         if rule:
             shown = redact(path or "<unknown>")
             location = f"{shown} (pathname)" if is_pathname else f"{shown}:{lineno}"
@@ -1583,7 +1707,7 @@ def main() -> int:
 
     if hits:
         print(f"scan-identifiers: {BLOCK_HEADER[kind]}", file=sys.stderr)
-        _report_hits(hits)
+        _report_hits(hits, allow_marker_usable=not args.no_allow_marker)
         return 1
 
     # Checked only after a clean content scan, so a real identifier is always the
