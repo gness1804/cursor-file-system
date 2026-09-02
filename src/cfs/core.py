@@ -1,6 +1,5 @@
 """Core CFS operations and utilities."""
 
-import json
 import re
 from pathlib import Path
 from typing import Optional, Set
@@ -28,8 +27,6 @@ BUILTIN_CATEGORIES = {
 # This intentionally only includes built-ins; custom categories are discovered per-repo.
 VALID_CATEGORIES = BUILTIN_CATEGORIES
 
-DEFAULT_HIDDEN_CATEGORIES = {"tmp", "security"}
-
 # Names that already exist as commands/sub-groups at the top level or under
 # `cfs instructions`, so a custom category with one of these names would shadow
 # or collide with them. Future top-level commands must be added here.
@@ -46,7 +43,6 @@ RESERVED_CATEGORY_NAMES = {
     "instructions",
     "instr",
     "i",
-    "gh",
     # top-level commands
     "init",
     "version",
@@ -54,7 +50,6 @@ RESERVED_CATEGORY_NAMES = {
 }
 
 _CUSTOM_CATEGORY_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_CATEGORY_CONFIG_FILE = ".cfs-categories.json"
 
 
 def find_cfs_root(start_path: Optional[Path] = None) -> Path:
@@ -91,39 +86,13 @@ def find_cfs_root(start_path: Optional[Path] = None) -> Path:
     )
 
 
-def _read_category_config(cfs_root: Path) -> dict:
-    """Read per-repo category config from .cursor/.cfs-categories.json."""
-    config_path = cfs_root / _CATEGORY_CONFIG_FILE
-    if not config_path.exists():
-        return {}
-
-    try:
-        content = config_path.read_text(encoding="utf-8").strip()
-        if not content:
-            return {}
-        data = json.loads(content)
-        if isinstance(data, dict):
-            return data
-    except (OSError, ValueError, json.JSONDecodeError):
-        pass
-
-    return {}
-
-
-def _write_category_config(cfs_root: Path, config: dict) -> None:
-    """Write per-repo category config to .cursor/.cfs-categories.json."""
-    config_path = cfs_root / _CATEGORY_CONFIG_FILE
-    serialized = json.dumps(config, indent=2, sort_keys=True) + "\n"
-    config_path.write_text(serialized, encoding="utf-8")
-
-
 def get_custom_categories(cfs_root: Path) -> Set[str]:
     """Get all custom categories present as directories under .cursor.
 
     Discovery applies the same guards as creation: directories whose names are
     reserved command names or are not valid kebab-case are ignored. Without
     this, a crafted directory in an untrusted repo (e.g. a cloned project
-    shipping `.cursor/gh/`) would be registered as a top-level command group
+    shipping `.cursor/handoff/`) would be registered as a top-level command group
     and shadow the real command.
     """
     if not cfs_root.exists() or not cfs_root.is_dir():
@@ -150,38 +119,13 @@ def get_all_categories(cfs_root: Path) -> Set[str]:
     return set(BUILTIN_CATEGORIES) | get_custom_categories(cfs_root)
 
 
-def get_hidden_categories(cfs_root: Path) -> Set[str]:
-    """Get hidden categories for this repo (default hidden + configured hidden)."""
-    hidden = set(DEFAULT_HIDDEN_CATEGORIES)
-    config = _read_category_config(cfs_root)
-    configured = config.get("hidden_categories", [])
-    if isinstance(configured, list):
-        hidden |= {str(category) for category in configured if isinstance(category, str)}
-    return hidden
-
-
-def set_category_hidden(cfs_root: Path, category: str, hidden: bool) -> None:
-    """Set hidden state for a category in this repo config."""
-    config = _read_category_config(cfs_root)
-    current = config.get("hidden_categories", [])
-    hidden_categories = {str(cat) for cat in current if isinstance(cat, str)}
-
-    if hidden:
-        hidden_categories.add(category)
-    else:
-        hidden_categories.discard(category)
-
-    config["hidden_categories"] = sorted(hidden_categories)
-    _write_category_config(cfs_root, config)
-
-
 def is_valid_custom_category_name(category: str) -> bool:
     """Validate custom category naming rules."""
     return bool(_CUSTOM_CATEGORY_NAME_RE.fullmatch(category))
 
 
-def create_custom_category(cfs_root: Path, category: str, hidden: bool = False) -> Path:
-    """Create a custom category directory under .cursor and optionally hide it from sync."""
+def create_custom_category(cfs_root: Path, category: str) -> Path:
+    """Create a custom category directory under .cursor."""
     normalized = category.strip()
     if not normalized:
         raise ValueError("Category name cannot be empty")
@@ -197,7 +141,6 @@ def create_custom_category(cfs_root: Path, category: str, hidden: bool = False) 
 
     category_path = cfs_root / normalized
     category_path.mkdir(parents=True, exist_ok=True)
-    set_category_hidden(cfs_root, normalized, hidden)
     return category_path
 
 

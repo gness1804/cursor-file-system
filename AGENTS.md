@@ -102,4 +102,4 @@ All exceptions inherit from `CFSError`:
 
 ## Current Work
 
-GitHub Issues integration is in progress. See `.cursor/progress/5-github-issues-integration-plan.md` for the implementation plan.
+GitHub Issues integration was removed in 0.14.0. The entire `cfs gh` command group, the category hide/unhide commands, the `--hidden` flag, and the `.cursor/.cfs-categories.json` config file are gone. The `github_issue:` frontmatter key is left in place on existing documents as an inert historical record — CFS no longer reads or writes it. See `CHANGELOG.md` for details.

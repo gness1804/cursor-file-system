@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-01
+
+### Removed
+- **The GitHub Issues integration is gone.** The entire `cfs gh` command group (`sync`, `status`, `link`, `unlink`, `purge-excluded`, `dedup`) has been deleted, along with `src/cfs/github.py`, `src/cfs/sync.py`, and `src/cfs/cli_github_commands.py`. `cfs gh` is now an unknown command. This is a breaking change with no replacement and no feature flag — the feature was removed deliberately, not disabled.
+
+  **Why:** `cfs gh sync` pushed CFS document bodies verbatim into GitHub issues, and an issue is exactly as public as its repo. Keeping that safe required a growing stack of controls outside CFS itself — a repo-visibility guard in the pre-commit hook, an opt-in file, a `cfs-guard` wrapper, and identifier scanning tuned for the publication path. The maintenance cost of that stack outgrew the feature's value.
+- Auto-creation of a GitHub issue on document `create`, and auto-closing on `complete`/`close`.
+- `cfs instructions category hide` and `cfs instructions category unhide`, and the `--hidden` flag on `category create`. These existed solely to exclude a category from sync and controlled nothing else.
+- The `.cursor/.cfs-categories.json` per-repo config file, which only ever stored the hidden-category list. Existing files are ignored and can be deleted.
+
+### Changed
+- `cfs instructions category list` no longer shows a "GitHub Sync" column; it lists Category and Type only. Creating and using custom categories is unaffected.
+- `gh` is no longer a reserved category name, so `.cursor/gh/` may now be used as a custom category.
+- The pre-commit hook in `.githooks/` no longer runs `cfs gh sync`, performs a repo-visibility check, or honours `.cursor/.allow-public-cfs-sync`. The staged-diff cloud-identifier scan and the gitleaks secret scan are unchanged and still run — they guard ordinary commits, not just the removed sync.
+
+### Fixed
+- The test suite no longer writes to the real system clipboard. `exec`, `handoff create` and `handoff pickup` copy their output with `pyperclip.copy`, and nothing mocked it, so a full `pytest` run pushed a dozen-odd throwaway entries onto the developer's clipboard. A new autouse fixture in `tests/conftest.py` intercepts the copy and records it, so tests can also assert on what was copied.
+
+### Notes
+- **The `github_issue:` frontmatter key is left in place** in existing documents as an inert historical record of which issue a document was once linked to. CFS no longer reads or writes it, and nothing will strip it. Remove it by hand if you want it gone.
+- **Removing the feature does not un-publish anything.** GitHub issues previously created by `cfs gh sync` still exist and remain exactly as public as their repos. Auditing or deleting those issues is a separate manual task.
+
 ## [0.13.3] - 2026-07-16
 
 ### Fixed
@@ -92,5 +114,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Code quality tools (Black, Ruff)
 - Full documentation and usage examples
 
-[Unreleased]: https://github.com/yourusername/cursor-instructions-cli/compare/v## [Unreleased]...HEAD
-[## [Unreleased]]: https://github.com/yourusername/cursor-instructions-cli/releases/tag/v## [Unreleased]
+[Unreleased]: https://github.com/gness1804/cursor-file-system/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/gness1804/cursor-file-system/releases/tag/v0.14.0

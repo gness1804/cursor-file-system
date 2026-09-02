@@ -1228,6 +1228,9 @@ def add_frontmatter(content: str, frontmatter: Dict[str, Any]) -> str:
 
 
 def remove_frontmatter_key(content: str, key: str) -> str:
+    # NOTE: no production caller since the GitHub sync removal in 0.14.0, which
+    # took `remove_github_issue_link` with it. Kept as part of the frontmatter
+    # utility set alongside parse_/add_frontmatter, and still covered by tests.
     """Remove a specific key from frontmatter.
 
     Args:
@@ -1249,51 +1252,6 @@ def remove_frontmatter_key(content: str, key: str) -> str:
     return f"---\n{frontmatter_yaml}---\n{body}"
 
 
-def get_github_issue_number(content: str) -> Optional[int]:
-    """Extract GitHub issue number from document frontmatter.
-
-    Args:
-        content: Full document content.
-
-    Returns:
-        GitHub issue number if present, None otherwise.
-    """
-    frontmatter, _ = parse_frontmatter(content)
-    issue_num = frontmatter.get("github_issue")
-
-    if issue_num is not None:
-        try:
-            return int(issue_num)
-        except (ValueError, TypeError):
-            return None
-    return None
-
-
-def set_github_issue_number(content: str, issue_number: int) -> str:
-    """Set GitHub issue number in document frontmatter.
-
-    Args:
-        content: Full document content.
-        issue_number: GitHub issue number to set.
-
-    Returns:
-        Document content with github_issue in frontmatter.
-    """
-    return add_frontmatter(content, {"github_issue": issue_number})
-
-
-def remove_github_issue_link(content: str) -> str:
-    """Remove GitHub issue link from document frontmatter.
-
-    Args:
-        content: Full document content.
-
-    Returns:
-        Document content without github_issue in frontmatter.
-    """
-    return remove_frontmatter_key(content, "github_issue")
-
-
 _CODE_FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
 
 
@@ -1306,8 +1264,8 @@ class CodeFenceTracker:
     line. Lines inside a fence — including the fence delimiters themselves —
     must not be parsed as headings; otherwise documents whose content embeds
     template examples (e.g. a literal `## Contents` inside a code block) are
-    extracted differently than they were written, which broke `gh sync`
-    round-trips.
+    extracted differently than they were written, which breaks round-trip
+    stability (edit -> re-read must yield the same content).
     """
 
     def __init__(self) -> None:
@@ -1336,6 +1294,11 @@ class CodeFenceTracker:
 
 
 def extract_document_sections(content: str) -> Dict[str, str]:
+    # NOTE: no production caller since the GitHub sync removal in 0.14.0, which
+    # took `build_github_issue_body` with it. Deliberately retained: it is the
+    # read counterpart to `replace_contents_section`, and its tests are the only
+    # regression coverage of the shared CodeFenceTracker parsing rules that
+    # `replace_contents_section` still depends on.
     """Extract sections from a CFS document.
 
     Heading detection is code-fence-aware: lines inside ``` or ~~~ blocks are
@@ -1392,10 +1355,10 @@ def extract_document_sections(content: str) -> Dict[str, str]:
                     section_content = []
                 current_section = known_section
                 continue
-            # Unknown h2 headers (e.g. "## Summary" in a GitHub-sourced body)
+            # Unknown h2 headers (e.g. "## Summary" in a hand-written body)
             # are subsections of the current section, not section breaks —
-            # treating them as breaks dropped their content and broke gh sync
-            # round-trips. Fall through to accumulate the line as content.
+            # treating them as breaks dropped their content entirely.
+            # Fall through to accumulate the line as content.
 
         # Accumulate content for current section
         if current_section:
@@ -1411,7 +1374,7 @@ def extract_document_sections(content: str) -> Dict[str, str]:
 def replace_contents_section(content: str, new_body: str) -> str:
     """Replace only the body of the ``## Contents`` section.
 
-    Preserves YAML frontmatter (including ``github_issue:``), the title, the
+    Preserves YAML frontmatter, the title, the
     ``## Working directory`` section, the ``## Acceptance criteria`` section,
     and any other content outside of ``## Contents``. Heading detection is
     code-fence-aware and uses the same section-break rules as
@@ -1645,46 +1608,3 @@ def _renumber_category(category_path: Path) -> None:
             "renumber documents",
             f"Cannot rename file to final name: {e}",
         )
-
-
-def build_github_issue_body(content: str) -> str:
-    """Build GitHub issue body from CFS document content.
-
-    Extracts Contents and Acceptance Criteria sections. If neither is present,
-    falls back to the unstructured document body.
-
-    Args:
-        content: Full CFS document content.
-
-    Returns:
-        Markdown body suitable for GitHub issue.
-    """
-    sections = extract_document_sections(content)
-
-    parts = []
-
-    if sections["contents"]:
-        parts.append(sections["contents"])
-
-    if sections["acceptance_criteria"]:
-        if parts:
-            parts.append("")  # Empty line separator
-        parts.append("## Acceptance Criteria")
-        parts.append("")
-        parts.append(sections["acceptance_criteria"])
-
-    if parts:
-        return "\n".join(parts)
-
-    _, body = parse_frontmatter(content)
-    lines = body.splitlines()
-
-    while lines and not lines[0].strip():
-        lines.pop(0)
-
-    if lines and lines[0].startswith("# "):
-        lines.pop(0)
-        while lines and not lines[0].strip():
-            lines.pop(0)
-
-    return "\n".join(lines).strip()
