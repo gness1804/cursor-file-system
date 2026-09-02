@@ -11,8 +11,6 @@ from rich.table import Table
 
 from cfs import core
 from cfs.cli_helpers import (
-    _try_auto_close_github_issue,
-    _try_auto_create_github_issue,
     console,
     get_document_notes,
     handle_cfs_error,
@@ -92,11 +90,6 @@ def create_category_command(
             "Cannot collide with a built-in category."
         ),
     ),
-    hidden: bool = typer.Option(
-        False,
-        "--hidden",
-        help="Hide this category from GitHub sync by default",
-    ),
 ) -> None:
     """Create a new custom category folder under .cursor/.
 
@@ -107,8 +100,6 @@ def create_category_command(
     Examples:
 
         cfs instructions category create planning-notes
-
-        cfs instr category create work --hidden
     """
     try:
         cfs_root = core.find_cfs_root()
@@ -117,7 +108,7 @@ def create_category_command(
         raise typer.Abort()
 
     try:
-        category_path = core.create_custom_category(cfs_root, name, hidden=hidden)
+        category_path = core.create_custom_category(cfs_root, name)
     except ValueError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Abort()
@@ -126,76 +117,28 @@ def create_category_command(
         raise typer.Abort()
 
     create_category_commands({name})
-    hidden_note = " (hidden from GitHub sync by default)" if hidden else ""
-    console.print(f"[green]✓ Created category: {category_path.name}{hidden_note}[/green]")
-
-
-@category_admin_app.command("hide")
-def hide_category_command(
-    name: str = typer.Argument(..., help="Category name"),
-) -> None:
-    """Hide a category from GitHub sync by default."""
-    try:
-        cfs_root = core.find_cfs_root()
-    except CFSNotFoundError as e:
-        handle_cfs_error(e)
-        raise typer.Abort()
-
-    if not core.validate_category(name, cfs_root):
-        console.print(f"[red]Error: Invalid category '{name}'[/red]")
-        console.print(
-            f"[yellow]Valid categories: {', '.join(sorted(core.get_all_categories(cfs_root)))}[/yellow]"
-        )
-        raise typer.Abort()
-
-    core.set_category_hidden(cfs_root, name, True)
-    console.print(f"[green]✓ Category '{name}' is now hidden from GitHub sync by default[/green]")
-
-
-@category_admin_app.command("unhide")
-def unhide_category_command(
-    name: str = typer.Argument(..., help="Category name"),
-) -> None:
-    """Unhide a category so it syncs to GitHub by default."""
-    try:
-        cfs_root = core.find_cfs_root()
-    except CFSNotFoundError as e:
-        handle_cfs_error(e)
-        raise typer.Abort()
-
-    if not core.validate_category(name, cfs_root):
-        console.print(f"[red]Error: Invalid category '{name}'[/red]")
-        console.print(
-            f"[yellow]Valid categories: {', '.join(sorted(core.get_all_categories(cfs_root)))}[/yellow]"
-        )
-        raise typer.Abort()
-
-    core.set_category_hidden(cfs_root, name, False)
-    console.print(f"[green]✓ Category '{name}' will now sync to GitHub by default[/green]")
+    console.print(f"[green]✓ Created category: {category_path.name}[/green]")
 
 
 @category_admin_app.command("list")
 def list_category_command() -> None:
-    """List all categories and whether each is hidden from GitHub sync."""
+    """List all categories (built-in and custom)."""
     try:
         cfs_root = core.find_cfs_root()
     except CFSNotFoundError as e:
         handle_cfs_error(e)
         raise typer.Abort()
 
-    hidden_categories = core.get_hidden_categories(cfs_root)
     all_categories = sorted(core.get_all_categories(cfs_root))
     custom_categories = core.get_custom_categories(cfs_root)
 
     table = Table(title="CFS Categories", box=box.ROUNDED)
     table.add_column("Category", style="cyan")
     table.add_column("Type", style="magenta")
-    table.add_column("GitHub Sync", style="green")
 
     for category in all_categories:
         category_type = "Custom" if category in custom_categories else "Built-in"
-        sync_state = "Hidden" if category in hidden_categories else "Visible"
-        table.add_row(category, category_type, sync_state)
+        table.add_row(category, category_type)
 
     console.print(table)
 
@@ -354,7 +297,6 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
 
                             console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
                             editor.open_file_in_editor(doc_path, editor_cmd, editor_args)
-                            _try_auto_create_github_issue(cat, doc_path, title)
                             return
 
                         console.print(f"[yellow]Opening {editor_cmd} for '{title}'...[/yellow]")
@@ -372,8 +314,6 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                     else:
                         console.print(f"[red]Error: {e}[/red]")
                     raise typer.Abort()
-
-                _try_auto_create_github_issue(cat, doc_path, title)
 
             @category_app.command("edit")
             def edit_in_category(
@@ -427,7 +367,7 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
 
                 if content_body is not None:
                     # Non-interactive mode: replace only the Contents-section body,
-                    # preserving frontmatter (e.g. github_issue:), title, and the
+                    # preserving frontmatter, title, and the
                     # other sections.
                     updated_content = documents.replace_contents_section(
                         current_content, content_body
@@ -776,8 +716,6 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                     handle_cfs_error(e)
                     raise typer.Abort()
 
-                _try_auto_close_github_issue(new_path)
-
             @category_app.command("uncomplete")
             def uncomplete_in_category(
                 doc_id: str = typer.Argument(..., help="Document ID (numeric or filename)"),
@@ -1027,8 +965,6 @@ def create_category_commands(categories: Optional[set[str]] = None) -> None:
                 except (DocumentNotFoundError, DocumentOperationError) as e:
                     handle_cfs_error(e)
                     raise typer.Abort()
-
-                _try_auto_close_github_issue(new_path)
 
             @category_app.command("check")
             def check_in_category() -> None:

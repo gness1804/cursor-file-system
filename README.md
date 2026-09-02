@@ -419,9 +419,6 @@ In addition to the built-in categories (`bugs`, `features`, `research`, `refacto
 cfs instructions category create planning-notes
 # Or use the short form:
 cfs instr category create planning-notes
-
-# Create a category that is hidden from GitHub sync by default
-cfs instr category create work --hidden
 ```
 
 **Naming rules:**
@@ -438,21 +435,11 @@ cfs instr planning-notes complete 1
 
 #### Listing Categories
 
-See every category (built-in and custom) along with its GitHub sync visibility:
+See every category, built-in and custom:
 
 ```bash
 cfs instructions category list
 # Or: cfs instr category list
-```
-
-#### Hiding / Unhiding from GitHub Sync
-
-```bash
-# Exclude a category from `cfs gh sync` by default
-cfs instr category hide work
-
-# Allow the category to sync again
-cfs instr category unhide work
 ```
 
 **Example:**
@@ -487,10 +474,8 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 - `cfs instructions <category> next` - Find and work on the next unresolved issue
 - `cfs instructions <category> move <id> <dest-category>` - Move a document to another category
 - `cfs instructions <category> exec <id>` - Output a document as custom instructions (also: `cfs exec <category> <id>`)
-- `cfs instructions category create <name> [--hidden]` - Create a custom category folder
-- `cfs instructions category hide <name>` - Hide a category from GitHub sync by default
-- `cfs instructions category unhide <name>` - Unhide a category for GitHub sync by default
-- `cfs instructions category list` - List built-in/custom categories and sync visibility
+- `cfs instructions category create <name>` - Create a custom category folder
+- `cfs instructions category list` - List built-in/custom categories
 - `cfs instructions handoff create` - Generate instructions for creating a handoff document (or bare `cfs instructions handoff`)
 - `cfs instructions handoff pickup` - Pick up the first incomplete handoff document
 
@@ -505,46 +490,6 @@ $ cfs instr planning-notes create --title "Q2 roadmap"
 ### Rules Commands
 
 - `cfs rules create [--name NAME] [--edit] [--comprehensive]` - Create rules document
-
-### GitHub Integration Commands
-
-Bidirectional sync between CFS documents and GitHub issues:
-
-- `cfs gh sync [--dry-run] [--strict] [--non-interactive] [--strategy STRATEGY] [--include-category CAT] [--exclude-category CAT]` - Sync CFS documents with GitHub issues
-- `cfs gh status [--include-category CAT] [--exclude-category CAT]` - Show sync status
-- `cfs gh link <category> <id> <issue_number>` - Manually link a CFS document to a GitHub issue
-- `cfs gh unlink <category> <id>` - Remove GitHub issue link from a CFS document
-- `cfs gh purge-excluded [--dry-run] [--include-category CAT] [--exclude-category CAT]` - Delete GitHub issues for excluded categories and unlink CFS documents
-
-**Non-interactive conflict resolution (hooks, CI, agents):** By default, when a linked CFS document and its GitHub issue have different content (title or body) and both are still open, `cfs gh sync` asks you to arbitrate at a prompt. In a non-TTY context (pre-commit hook, CI job, or agent) there is no one to answer, so those items are reported as `Needs Interactive` and deferred. To resolve conflicts deterministically instead, pass a strategy:
-
-- `cfs gh sync --non-interactive` (alias `-y`) — never prompt; implies `--strategy newer`.
-- `cfs gh sync --strategy <local|remote|newer|skip>`:
-  - `local` — the CFS document always wins; its content is pushed to GitHub.
-  - `remote` — the GitHub issue always wins; its content is pulled into CFS.
-  - `newer` — whichever side changed more recently wins (CFS file mtime vs. the issue's `updatedAt`; falls back to the CFS side if a timestamp is unavailable). **Recommended default.** Note: on a fresh CI checkout every file shares the checkout-time mtime, so `newer` will tend to favor CFS there; use `--strategy remote` or `local` explicitly if you need a specific side to win in CI.
-  - `skip` — leave conflicts untouched and report them as *deferred* (advisory only — the sync still completes cleanly).
-
-A conflict is reported when a linked document and its GitHub issue have differing content (title or body) while both are still open — the sync compares the two current versions, not a stored baseline, so it flags the divergence without knowing which side changed. Routine `create`, `complete`, and `close` operations on CFS-managed documents are status/creation actions rather than content edits, so they reconcile automatically and never prompt. When an interactive prompt does appear, it names *what* diverged (title, body, or both) so you know why a decision is needed.
-
-**Guardrails on non-interactive resolution** (because a strategy can overwrite a file no human is reviewing):
-
-- **Prompt-injection tripwire.** Before a strategy pulls a GitHub issue's content into a local CFS document (which AI agents later read and trust), the incoming title/body is scanned for common prompt-injection signatures — override phrases like "ignore previous instructions", role-reassignment, system-prompt/secret exfiltration attempts, fake chat-role tags, and hidden/bidirectional control characters. Anything that trips the tripwire is **not** auto-applied; it's *deferred* with a warning naming the signatures, so a human reviews the diff via an interactive `cfs gh sync`. (Heuristic only — the interactive diff review is the real safeguard.)
-- **Recoverable overwrites.** Whenever a non-interactive resolution overwrites a local document, the prior content is first saved to a sibling `<file>.orig` (gitignored) so an unwanted auto-resolution is always recoverable.
-
-**Strict mode for hooks and CI:** `cfs gh sync --strict` exits with code 1 when real sync errors occur (GitHub API failures, file-operation errors), so a `set -e` pre-commit hook or CI step stops instead of silently passing. Items that just need a human — content conflicts or new issues without a category — never fail the command, even in strict mode. Combine `--strict` with `--non-interactive` for a hook that resolves conflicts deterministically and only fails on genuine errors.
-
-**Recommended pre-commit invocation:** use `cfs gh sync --non-interactive` in git hooks so a routine commit never turns into a "go resolve something in a terminal" chore. Conflicts auto-resolve by recency; anything that genuinely can't be resolved (e.g. a new issue with no category label) is deferred with an advisory note rather than blocking the commit.
-
-**Category exclusion:** By default, the `tmp` and `security` categories are excluded from GitHub sync. The `security` category is excluded to prevent potential vulnerability details from being exposed in public GitHub issues.
-
-- Use `--include-category` (`-ic`) to force-include a default-excluded category (e.g., `--include-category security`)
-- Use `--exclude-category` (`-ec`) to exclude additional categories (e.g., `--exclude-category progress`)
-- Both flags can be used multiple times
-- Custom categories can be hidden from sync with `cfs instructions category create <name> --hidden`
-  or `cfs instructions category hide <name>`
-
-**Purging excluded issues:** If you have existing GitHub issues for categories you now want excluded, use `cfs gh purge-excluded` to permanently delete those GitHub issues while preserving the local CFS documents.
 
 ### Valid Categories
 
@@ -568,14 +513,6 @@ cfs instructions category create work
 cfs instructions work create --title "Weekly Planning"
 ```
 
-To hide a custom category from GitHub sync by default:
-
-```bash
-cfs instructions category create security-review --hidden
-# or later:
-cfs instructions category hide security-review
-```
-
 ## Cursor File Structure (CFS)
 
 The CFS organizes documents into a `.cursor` directory with the following structure:
@@ -597,8 +534,7 @@ The CFS organizes documents into a `.cursor` directory with the following struct
 ├── qa/                        # Testing and QA
 ├── security/                  # Security documents
 ├── tmp/                       # Temporary files
-├── work/                      # Example custom category
-└── .cfs-categories.json       # Optional hidden-category config
+└── work/                      # Example custom category
 ```
 
 ### Document Naming
@@ -855,7 +791,7 @@ which cfs  # Should show path to cfs command
 ## Roadmap
 
 - **MVP**: CRUD operations for CFS documents
-- **v2.0**: GitHub issues integration
+- ~~**v2.0**: GitHub issues integration~~ (shipped, then removed in 0.14.0 — see CHANGELOG.md)
 - **v3.0**: Cursor Agent CLI integration
 - **v4.0+**: MCP integrations, Slack, Discord, etc.
 

@@ -8,7 +8,6 @@ from cfs.core import (
     find_cfs_root,
     get_all_categories,
     get_category_path,
-    get_hidden_categories,
     validate_category,
 )
 from cfs.exceptions import CFSNotFoundError, InvalidCategoryError
@@ -140,22 +139,21 @@ class TestValidateCategory:
 class TestCustomCategoryConfig:
     """Tests for custom category creation/config helpers."""
 
-    def test_create_custom_category_hidden(self, tmp_path):
-        """Creating a hidden custom category persists hidden config."""
+    def test_create_custom_category(self, tmp_path):
+        """Creating a custom category makes it discoverable."""
         cursor_dir = tmp_path / ".cursor"
         cursor_dir.mkdir()
 
-        category_path = create_custom_category(cursor_dir, "work", hidden=True)
+        category_path = create_custom_category(cursor_dir, "work")
         assert category_path.exists()
         assert "work" in get_all_categories(cursor_dir)
-        assert "work" in get_hidden_categories(cursor_dir)
 
 
 class TestCategoryDiscoveryGuards:
     """Discovery of categories from disk applies the same guards as creation.
 
     Without these guards, a crafted directory in an untrusted repo (e.g. a
-    cloned project shipping `.cursor/gh/`) would be registered as a top-level
+    cloned project shipping `.cursor/handoff/`) would be registered as a top-level
     command group and shadow the real command.
     """
 
@@ -168,7 +166,7 @@ class TestCategoryDiscoveryGuards:
         from cfs.core import RESERVED_CATEGORY_NAMES, get_custom_categories
 
         cursor_dir = self._make_cursor(tmp_path)
-        for name in ["gh", "init", "version", "tree", "i", "handoff"]:
+        for name in ["init", "version", "tree", "i", "handoff"]:
             (cursor_dir / name).mkdir()
         (cursor_dir / "legit-notes").mkdir()
 
@@ -191,10 +189,10 @@ class TestCategoryDiscoveryGuards:
         from cfs.core import categories_for_command_registration
 
         cursor_dir = self._make_cursor(tmp_path)
-        (cursor_dir / "gh").mkdir()
+        (cursor_dir / "handoff").mkdir()
         (cursor_dir / "legit-notes").mkdir()
 
         registered = categories_for_command_registration(start_path=tmp_path)
 
-        assert "gh" not in registered
+        assert "handoff" not in registered
         assert "legit-notes" in registered

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Cloud-identifier scanner. CANONICAL SOURCE — copied into repos by /pre-commit
-and invoked by the cfs-guard shim. Keep SCANNER_VERSION in step with changes.
+Cloud-identifier scanner. CANONICAL SOURCE — copied into repos by /pre-commit.
+Keep SCANNER_VERSION in step with changes.
 
 WHY PYTHON, AFTER THREE BASH VERSIONS
 -------------------------------------
@@ -85,7 +85,7 @@ import subprocess
 import sys
 import unicodedata
 
-SCANNER_VERSION = "5.5.1"
+SCANNER_VERSION = "5.6.0"
 
 # AWS's own documentation example account IDs — never real.
 EXAMPLE_ACCOUNT_IDS = frozenset(
@@ -1501,8 +1501,8 @@ def iter_file_lines(paths, unscannable: list[str]):
 
     FAILS CLOSED, like every other mode. This used to swallow OSError and move
     on, so a missing path, an unreadable path and a directory each scanned as
-    rc 0 — and this is the mode the cfs-guard shim uses on CFS documents, the
-    2026-07-18 sink. The staged-diff path had already been hardened to exit
+    rc 0 — and this is the mode that scans whole files on demand (--files),
+    rather than staged diffs. The staged-diff path had already been hardened to exit
     rather than proceed unscanned; the two modes disagreed about the same
     question, which is exactly the contradiction that produced the original bug.
     """
@@ -1581,9 +1581,6 @@ def _report_hits(hits, allow_marker_usable: bool = True) -> None:
     print("", file=e)
     print("  Use a placeholder such as <AWS_ACCOUNT_ID> and resolve at runtime:", file=e)
     print("    aws sts get-caller-identity --query Account --output text", file=e)
-    print("", file=e)
-    print("  CFS docs sync into GitHub issues, which are exactly as public as the", file=e)
-    print("  repo. Check with: gh repo view --json visibility", file=e)
     print("", file=e)
     if allow_marker_usable:
         print("  If a line is genuinely fine — a real UUID whose tail is 12 digits, or a", file=e)

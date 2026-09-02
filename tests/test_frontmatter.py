@@ -2,13 +2,9 @@
 
 from cfs.documents import (
     add_frontmatter,
-    build_github_issue_body,
     extract_document_sections,
-    get_github_issue_number,
     parse_frontmatter,
     remove_frontmatter_key,
-    remove_github_issue_link,
-    set_github_issue_number,
 )
 
 
@@ -168,79 +164,6 @@ other: value
         assert frontmatter == {"other": "value"}
 
 
-class TestGetGithubIssueNumber:
-    """Tests for get_github_issue_number function."""
-
-    def test_get_existing_issue_number(self):
-        """Test getting issue number from frontmatter."""
-        content = """---
-github_issue: 42
----
-# Title
-"""
-        assert get_github_issue_number(content) == 42
-
-    def test_get_missing_issue_number(self):
-        """Test getting issue number when not present."""
-        content = "# Title\n\nContent"
-        assert get_github_issue_number(content) is None
-
-    def test_get_invalid_issue_number(self):
-        """Test handling invalid issue number format."""
-        content = """---
-github_issue: not_a_number
----
-# Title
-"""
-        assert get_github_issue_number(content) is None
-
-    def test_get_issue_number_as_string(self):
-        """Test that string numbers are converted."""
-        content = """---
-github_issue: "42"
----
-# Title
-"""
-        assert get_github_issue_number(content) == 42
-
-
-class TestSetGithubIssueNumber:
-    """Tests for set_github_issue_number function."""
-
-    def test_set_new_issue_number(self):
-        """Test setting issue number on document without one."""
-        content = "# Title\n\nContent"
-        result = set_github_issue_number(content, 42)
-
-        assert get_github_issue_number(result) == 42
-
-    def test_update_issue_number(self):
-        """Test updating existing issue number."""
-        content = """---
-github_issue: 1
----
-# Title
-"""
-        result = set_github_issue_number(content, 42)
-
-        assert get_github_issue_number(result) == 42
-
-
-class TestRemoveGithubIssueLink:
-    """Tests for remove_github_issue_link function."""
-
-    def test_remove_link(self):
-        """Test removing GitHub issue link."""
-        content = """---
-github_issue: 42
----
-# Title
-"""
-        result = remove_github_issue_link(content)
-
-        assert get_github_issue_number(result) is None
-
-
 class TestExtractDocumentSections:
     """Tests for extract_document_sections function."""
 
@@ -313,94 +236,10 @@ Content here.
         assert "Done" in sections["acceptance_criteria"]
 
 
-class TestBuildGithubIssueBody:
-    """Tests for build_github_issue_body function."""
-
-    def test_build_with_contents_and_criteria(self):
-        """Test building body with both sections."""
-        content = """# Issue Title
-
-## Working directory
-
-`~/test`
-
-## Contents
-
-This is what needs to be done.
-
-## Acceptance criteria
-
-- Must work
-- Must be tested
-"""
-        body = build_github_issue_body(content)
-
-        assert "This is what needs to be done." in body
-        assert "## Acceptance Criteria" in body
-        assert "Must work" in body
-
-    def test_build_contents_only(self):
-        """Test building body with only contents section."""
-        content = """# Issue Title
-
-## Contents
-
-Just the content.
-"""
-        body = build_github_issue_body(content)
-
-        assert "Just the content" in body
-        assert "Acceptance Criteria" not in body
-
-    def test_build_empty_document(self):
-        """Test building body from empty document."""
-        content = "# Title"
-        body = build_github_issue_body(content)
-
-        assert body == ""
-
-    def test_build_fallback_body(self):
-        """Test fallback when no structured sections exist."""
-        content = """# Issue Title
-
-This content lives outside the expected sections.
-
-- It should still transfer
-- Even without headers
-"""
-        body = build_github_issue_body(content)
-
-        assert "This content lives outside the expected sections." in body
-        assert "- It should still transfer" in body
-        assert "# Issue Title" not in body
-
-    def test_build_preserves_markdown(self):
-        """Test that markdown formatting is preserved."""
-        content = """# Title
-
-## Contents
-
-Here's some **bold** and `code`.
-
-- List item 1
-- List item 2
-
-## Acceptance criteria
-
-1. First
-2. Second
-"""
-        body = build_github_issue_body(content)
-
-        assert "**bold**" in body
-        assert "`code`" in body
-        assert "- List item 1" in body
-
-
 class TestCodeFenceAwareExtraction:
     """Section extraction must not treat heading-like lines inside code fences
     as section breaks, and unknown h2 subsections belong to their parent
-    section (bugs/16: gh sync conflict loop)."""
+    section (originally found via bugs/16)."""
 
     def test_fenced_headers_are_content_not_section_breaks(self):
         content = """# Title
@@ -482,9 +321,9 @@ GitHub-style body with its own subsections.
 
     def test_round_trip_extraction_is_stable(self):
         """Extracting, embedding into a fresh skeleton, and re-extracting must
-        produce the same contents — this is what keeps gh sync conflicts from
-        reappearing after resolution."""
-        github_style_body = """## Summary
+        produce the same contents, so an edit round-trip never mutates a
+        document's body."""
+        summary_style_body = """## Summary
 
 Report with a template example:
 
@@ -506,7 +345,7 @@ Closing remarks."""
                 "",
                 "## Contents",
                 "",
-                github_style_body,
+                summary_style_body,
                 "",
                 "## Acceptance criteria",
                 "",
@@ -517,4 +356,4 @@ Closing remarks."""
         redoc = f"# Some Issue\n\n## Contents\n\n{first}\n"
         second = extract_document_sections(redoc)["contents"]
 
-        assert first == second == github_style_body
+        assert first == second == summary_style_body

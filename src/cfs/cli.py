@@ -6,10 +6,7 @@ from typing import Optional
 import typer
 
 from cfs import core
-from cfs.cli_github_commands import gh_app
 from cfs.cli_helpers import (
-    _try_auto_close_github_issue,  # noqa: F401 - re-exported for test compatibility
-    _try_auto_create_github_issue,  # noqa: F401 - re-exported for test compatibility
     console,
     handle_cfs_error,
 )
@@ -44,7 +41,6 @@ app.add_typer(instructions_app, name="instructions")
 app.add_typer(instructions_app, name="instr")  # Short alias for instructions
 app.add_typer(instructions_app, name="i")  # Shorter alias for instructions
 app.add_typer(rules_app, name="rules")
-app.add_typer(gh_app, name="gh")
 app.add_typer(handoff_app, name="handoff")
 app.add_typer(category_admin_app, name="category")
 
@@ -140,7 +136,6 @@ This project uses CFS (Cursor File Structure) to manage instruction documents.{l
 cfs features create   # Create a feature request
 cfs bugs create       # Create a bug report
 cfs view              # View incomplete documents (--all for everything)
-cfs gh sync           # Sync with GitHub issues
 ```
 """
         init_file.write_text(init_content, encoding="utf-8")

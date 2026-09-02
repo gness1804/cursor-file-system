@@ -72,3 +72,5 @@ and is not reversible, so if it is offered at all it should be behind an
 explicit flag.
 
 ## Acceptance criteria
+
+<!-- CLOSED -->
