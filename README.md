@@ -797,4 +797,4 @@ which cfs  # Should show path to cfs command
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
